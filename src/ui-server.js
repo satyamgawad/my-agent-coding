@@ -75,6 +75,7 @@ export function createUiServer({
 } = {}) {
     const workspaceManager = new WorkspaceManager({ agentRoot });
     const projectRunner = new ProjectRunner(workspaceManager);
+    const unavailableProfiles = new Map();
     let activeTask = null;
     let taskSequence = 0;
 
@@ -200,6 +201,7 @@ export function createUiServer({
             const model = new ModelRouter({
                 mode,
                 createModel,
+                unavailableProfiles,
                 onRoute: ({ profile, fallback, error }) => {
                     responseEvent(response, "model", {
                         label: profile.label,

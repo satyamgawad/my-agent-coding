@@ -2,7 +2,7 @@ import Nemotron from "./nemotron.js";
 
 export const MODEL_PROFILES = Object.freeze({
     flash: Object.freeze({
-        id: "deepseek-ai/deepseek-v4-flash",
+        id: "deepseek-ai/deepseek-v4-flash-0731",
         label: "DeepSeek V4 Flash",
         summary: "Fast lane",
     }),
@@ -19,6 +19,8 @@ export const MODEL_PROFILES = Object.freeze({
 });
 
 export const MODEL_MODES = new Set(["auto", "flash", "ultra", "glm", "custom"]);
+
+const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
 
 // Keep Auto responsive for everyday work.  A normal app or website request is
 // usually an iterative task, so it starts on Flash; the heavier lanes are
@@ -59,12 +61,24 @@ function routeForMode(mode, task, customModel) {
     ];
 }
 
-function isRetryableModelError(error) {
+function errorStatus(error) {
+    return Number(error?.status || error?.statusCode);
+}
+
+function isFailoverEligibleModelError(error) {
     const message = String(error?.message || error);
+    const status = errorStatus(error);
     return (
+        [404, 408, 409, 410, 425, 429].includes(status) || status >= 500 ||
         /connection|network|timeout|temporar|rate limit|\b429\b|\b5\d\d\b/i.test(message) ||
+        /\b(?:404|408|409|410|425)\b/.test(message) ||
         ["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND"].includes(error?.code)
     );
+}
+
+function isUnavailableModelError(error) {
+    const status = errorStatus(error);
+    return [404, 410].includes(status) || /\b(?:404|410)\b/.test(String(error?.message || error));
 }
 
 export default class ModelRouter {
@@ -73,6 +87,8 @@ export default class ModelRouter {
         customModel = process.env.NVIDIA_MODEL,
         createModel = (profile) => new Nemotron({ model: profile.id }),
         onRoute,
+        unavailableProfiles = new Map(),
+        now = () => Date.now(),
     } = {}) {
         this.mode = mode || (customModel ? "custom" : "auto");
 
@@ -87,6 +103,8 @@ export default class ModelRouter {
         this.customModel = customModel;
         this.createModel = createModel;
         this.onRoute = onRoute;
+        this.unavailableProfiles = unavailableProfiles;
+        this.now = now;
         this.route = null;
         this.routeIndex = 0;
         this.models = new Map();
@@ -96,12 +114,39 @@ export default class ModelRouter {
         return this.route?.[this.routeIndex] || null;
     }
 
+    resetTask() {
+        this.route = null;
+        this.routeIndex = 0;
+    }
+
+    routeWithAvailableProfiles(route) {
+        const now = this.now();
+        const available = route.filter((profile) => {
+            const unavailableUntil = this.unavailableProfiles.get(profile.id);
+
+            if (!unavailableUntil) {
+                return true;
+            }
+
+            if (unavailableUntil <= now) {
+                this.unavailableProfiles.delete(profile.id);
+                return true;
+            }
+
+            return false;
+        });
+
+        return available.length > 0 ? available : route;
+    }
+
     selectRoute(task) {
         if (this.route) {
             return this.activeProfile;
         }
 
-        this.route = routeForMode(this.mode, task, this.customModel);
+        this.route = this.routeWithAvailableProfiles(
+            routeForMode(this.mode, task, this.customModel)
+        );
         this.notifyRoute(false);
         return this.activeProfile;
     }
@@ -128,9 +173,18 @@ export default class ModelRouter {
 
         while (true) {
             try {
-                return await this.modelFor(this.activeProfile).generate(prompt, options);
+                const response = await this.modelFor(this.activeProfile).generate(prompt, options);
+                this.unavailableProfiles.delete(this.activeProfile.id);
+                return response;
             } catch (error) {
-                if (!isRetryableModelError(error) || this.routeIndex >= this.route.length - 1) {
+                if (isUnavailableModelError(error)) {
+                    this.unavailableProfiles.set(
+                        this.activeProfile.id,
+                        this.now() + UNAVAILABLE_MODEL_TTL_MS
+                    );
+                }
+
+                if (!isFailoverEligibleModelError(error) || this.routeIndex >= this.route.length - 1) {
                     throw error;
                 }
 

@@ -262,6 +262,7 @@ export default class Agent {
     }
 
     async run(task, { signal } = {}) {
+        this.model.resetTask?.();
         let prompt = task;
         let latestResult = null;
         let pendingVerification = null;
@@ -298,7 +299,7 @@ export default class Agent {
                     return TASK_CANCELLED_RESULT;
                 }
 
-                return `❌ The model request failed after ${MAX_MODEL_ATTEMPTS} attempts: ${error.message || String(error)}`;
+                return `❌ The model request failed: ${error.message || String(error)}`;
             }
 
             const content = typeof response?.content === "string" ? response.content : "";
