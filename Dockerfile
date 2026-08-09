@@ -12,7 +12,8 @@ ENV NODE_ENV=production \
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && apk add --no-cache su-exec
 
 RUN addgroup -S codingagent \
     && adduser -S -G codingagent codingagent
@@ -21,8 +22,10 @@ COPY --chown=codingagent:codingagent . .
 RUN mkdir -p /app/projects \
     && chown -R codingagent:codingagent /app
 
-USER codingagent
+COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+RUN chmod 755 /usr/local/bin/docker-entrypoint
 
 EXPOSE 3000
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 CMD ["npm", "run", "ui"]

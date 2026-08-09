@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { timingSafeEqual } from "node:crypto";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import Agent from "./agent.js";
@@ -173,6 +174,16 @@ function localUrl(host, port) {
     return `http://${formattedHost}:${port}`;
 }
 
+function workspaceIsReady(workspaceManager) {
+    try {
+        const projectsRoot = workspaceManager.resolveProjectsRoot({ create: true });
+        accessSync(projectsRoot, fsConstants.R_OK | fsConstants.W_OK | fsConstants.X_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function createUiServer({
     agentRoot = process.cwd(),
     createModel = (profile) => new Nemotron({ model: profile.id }),
@@ -188,6 +199,17 @@ export function createUiServer({
 
     const server = createServer(async (request, response) => {
         const url = new URL(request.url || "/", "http://127.0.0.1");
+
+        // Railway uses this unauthenticated endpoint only to confirm that the
+        // container has started and can use its mounted project storage. It
+        // intentionally exposes no workspace, project, model, or account data.
+        if (request.method === "GET" && url.pathname === "/health") {
+            const ready = workspaceIsReady(workspaceManager);
+            responseJson(response, ready ? 200 : 503, {
+                status: ready ? "ok" : "unavailable",
+            });
+            return;
+        }
 
         if (!hasDashboardAccess(request, accessPassword)) {
             requestAuthentication(response);

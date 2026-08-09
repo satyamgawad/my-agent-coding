@@ -113,6 +113,26 @@ separately rather than exposing their development servers through the agent.
 For a team deployment, add your provider's identity-aware proxy or access
 control in front of the dashboard instead of sharing one password.
 
+### Railway deployment
+
+This repository is configured for Railway. In Railway, create a new project
+from the `satyamgawad/my-agent-coding` GitHub repository and select the `main`
+branch. Railway will use the included Dockerfile automatically.
+
+In the service's Variables tab, add these two secrets:
+
+```text
+NVIDIA_API_KEY=your_nvidia_key
+AGENT_UI_PASSWORD=a-long-unique-password-with-at-least-16-characters
+```
+
+Then add a Railway Volume mounted at `/app/projects` so generated projects
+survive deployments, and generate a public Railway domain. The dashboard will
+ask for username `agent` and your `AGENT_UI_PASSWORD`. Railway supplies the
+runtime port automatically; do not add `PORT`, `AGENT_UI_HOST`, or your local
+`.env` file as Railway variables. Keep the service at one replica because the
+active workspace and generated projects live on that single mounted volume.
+
 ### Command line
 
 Start a continuous interactive session:

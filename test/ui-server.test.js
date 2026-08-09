@@ -129,6 +129,10 @@ test("a protected dashboard requires its configured Basic Auth password", async 
     assert.equal(anonymous.status, 401);
     assert.match(anonymous.headers.get("www-authenticate"), /Basic realm="My Coding Agent"/);
 
+    const health = await fetch(`${baseUrl}/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: "ok" });
+
     const wrongPassword = await fetch(baseUrl, {
         headers: { authorization: basicAuthorization("agent", "wrong-password") },
     });
@@ -139,6 +143,27 @@ test("a protected dashboard requires its configured Basic Auth password", async 
     });
     assert.equal(authenticated.status, 200);
     assert.match(await authenticated.text(), /Give it a task/);
+});
+
+test("the Railway health check exposes no project data and detects unsafe project storage", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-outside-"));
+    fs.symlinkSync(outside, path.join(root, "projects"), "dir");
+    const server = createUiServer({ agentRoot: root, accessPassword: "a-long-local-dashboard-password" });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    });
+
+    const health = await fetch(`${baseUrl}/health`);
+    assert.equal(health.status, 503);
+    assert.deepEqual(await health.json(), { status: "unavailable" });
+
+    const context = await fetch(`${baseUrl}/api/context`);
+    assert.equal(context.status, 401);
 });
 
 test("remote dashboard mode keeps project previews local-only", async (t) => {
