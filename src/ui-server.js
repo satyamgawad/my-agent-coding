@@ -184,6 +184,17 @@ function workspaceIsReady(workspaceManager) {
     }
 }
 
+function activeTaskStatus(activeTask) {
+    if (!activeTask) {
+        return { state: "idle", taskId: null };
+    }
+
+    return {
+        state: activeTask.controller.signal.aborted ? "cancelling" : "working",
+        taskId: activeTask.id,
+    };
+}
+
 export function createUiServer({
     agentRoot = process.cwd(),
     createModel = (profile) => new Nemotron({ model: profile.id }),
@@ -213,6 +224,15 @@ export function createUiServer({
 
         if (!hasDashboardAccess(request, accessPassword)) {
             requestAuthentication(response);
+            return;
+        }
+
+        // A page reload cannot resume the original SSE response, but it can
+        // safely discover whether this server is still processing a task.
+        // Keep this deliberately small: it does not expose the task prompt,
+        // model, workspace, or streamed output.
+        if (request.method === "GET" && url.pathname === "/api/tasks/active") {
+            responseJson(response, 200, activeTaskStatus(activeTask));
             return;
         }
 

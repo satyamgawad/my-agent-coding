@@ -145,6 +145,68 @@ test("a protected dashboard requires its configured Basic Auth password", async 
     assert.match(await authenticated.text(), /Give it a task/);
 });
 
+test("the authenticated active-task status supports dashboard recovery without exposing task data", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const password = "a-long-local-dashboard-password";
+    let markModelStarted;
+    const modelStarted = new Promise((resolve) => {
+        markModelStarted = resolve;
+    });
+    const server = createUiServer({
+        agentRoot: root,
+        accessPassword: password,
+        createModel: () => ({
+            async generate(_prompt, { signal }) {
+                markModelStarted();
+                return new Promise((resolve, reject) => {
+                    signal.addEventListener("abort", () => reject(new Error("Request aborted.")), { once: true });
+                });
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+    const authorization = basicAuthorization("agent", password);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({ task: "This prompt must remain private." }),
+    });
+    const taskId = task.headers.get("x-task-id");
+    await modelStarted;
+
+    const anonymous = await fetch(`${baseUrl}/api/tasks/active`);
+    assert.equal(anonymous.status, 401);
+
+    const active = await fetch(`${baseUrl}/api/tasks/active`, { headers: { authorization } });
+    assert.equal(active.status, 200);
+    assert.equal(active.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await active.json(), { state: "working", taskId });
+
+    const duplicate = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({ task: "A second task must not start." }),
+    });
+    assert.equal(duplicate.status, 409);
+
+    const cancel = await fetch(`${baseUrl}/api/tasks/cancel`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({ taskId }),
+    });
+    assert.equal(cancel.status, 202);
+    await task.text();
+
+    const idle = await fetch(`${baseUrl}/api/tasks/active`, { headers: { authorization } });
+    assert.deepEqual(await idle.json(), { state: "idle", taskId: null });
+});
+
 test("the Railway health check exposes no project data and detects unsafe project storage", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-outside-"));
@@ -262,6 +324,15 @@ test("the dashboard code labels a dropped started stream as a connection interru
 
     assert.match(script, /Task connection interrupted/);
     assert.match(script, /task stream ended before the agent returned a result/i);
+});
+
+test("the dashboard restores an active task after a reload or a 409 task collision", () => {
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(script, /fetch\("\/api\/tasks\/active"/);
+    assert.match(script, /Recovered active task/);
+    assert.match(script, /response\.status === 409/);
+    assert.match(script, /startActiveTaskPolling/);
 });
 
 test("the local UI cancels only the active task and returns a final cancellation event", async (t) => {

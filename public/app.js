@@ -43,6 +43,11 @@ const modelNotes = {
 let workspaceContext = { project: null };
 let projectStatus = { state: "idle", project: null, url: null };
 let activeTaskId = null;
+let taskStatusKnown = false;
+let recoveringActiveTask = false;
+let activeTaskPoll = null;
+
+const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
 
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
@@ -50,13 +55,15 @@ function setConnection(text, offline = false) {
 }
 
 function setRunning(isRunning) {
-  runButton.disabled = isRunning;
-  taskInput.disabled = isRunning;
-  modelMode.disabled = isRunning;
+  runButton.disabled = isRunning || !taskStatusKnown;
+  taskInput.disabled = isRunning || !taskStatusKnown;
+  modelMode.disabled = isRunning || !taskStatusKnown;
   runButton.firstElementChild.textContent = isRunning ? "Working…" : "Run task";
   taskHint.textContent = isRunning
     ? "The agent is working through the task and streaming its verified steps."
-    : "The agent verifies each change before it reports success.";
+    : taskStatusKnown
+      ? "The agent verifies each change before it reports success."
+      : "Checking whether an earlier task is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
   activityState.classList.toggle("is-working", isRunning);
   cancelButton.hidden = !isRunning;
@@ -65,6 +72,98 @@ function setRunning(isRunning) {
   if (!isRunning) {
     activeTaskId = null;
     cancelButton.textContent = "Cancel task";
+  }
+}
+
+function stopActiveTaskPolling() {
+  if (!activeTaskPoll) return;
+  clearInterval(activeTaskPoll);
+  activeTaskPoll = null;
+}
+
+function showRecoveredTask(status, { announce = false, replaceActivity = false } = {}) {
+  const taskChanged = activeTaskId !== status.taskId;
+  const shouldAnnounce = announce && (!recoveringActiveTask || taskChanged);
+
+  activeTaskId = status.taskId;
+  recoveringActiveTask = true;
+  setRunning(true);
+
+  if (status.state === "cancelling") {
+    cancelButton.disabled = true;
+    cancelButton.textContent = "Cancelling…";
+    taskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+  }
+
+  resultTitle.textContent = status.state === "cancelling" ? "Cancelling task" : "Agent is working";
+  resultMark.textContent = "…";
+  resultText.textContent = "This task began before this dashboard connection. Its live trace cannot be replayed, but it is still running and can be cancelled.";
+  resultCard.classList.remove("is-success", "is-error");
+
+  if (shouldAnnounce) {
+    if (replaceActivity) clearActivity();
+    addActivity(
+      status.state === "cancelling" ? "Task cancellation is still in progress" : "Recovered active task",
+      "The agent is still working on a task started before this page loaded."
+    );
+  }
+}
+
+function showRecoveredTaskCompletion() {
+  resultTitle.textContent = "Task finished";
+  resultMark.textContent = "✓";
+  resultText.textContent = "The task finished while this dashboard was disconnected. Review the active project for its completed changes.";
+  resultCard.classList.remove("is-success", "is-error");
+  addActivity("Recovered task finished", "Review the active project before starting another task.");
+}
+
+function startActiveTaskPolling() {
+  if (activeTaskPoll) return;
+
+  activeTaskPoll = setInterval(() => {
+    refreshActiveTask({ announceCompletion: true });
+  }, ACTIVE_TASK_POLL_INTERVAL_MS);
+}
+
+async function refreshActiveTask({ announce = false, replaceActivity = false, announceCompletion = false } = {}) {
+  try {
+    const response = await fetch("/api/tasks/active", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Task status is unavailable.");
+
+    const status = await response.json();
+    taskStatusKnown = true;
+
+    if (
+      !status ||
+      !["idle", "working", "cancelling"].includes(status.state) ||
+      (status.state !== "idle" && typeof status.taskId !== "string")
+    ) {
+      throw new Error("Task status is unavailable.");
+    }
+
+    if (status.state === "idle") {
+      const hadRecoveredTask = recoveringActiveTask;
+      activeTaskId = null;
+      recoveringActiveTask = false;
+      stopActiveTaskPolling();
+      setRunning(false);
+
+      if (hadRecoveredTask && announceCompletion) {
+        showRecoveredTaskCompletion();
+        refreshContext();
+      }
+
+      return false;
+    }
+
+    showRecoveredTask(status, { announce, replaceActivity });
+    startActiveTaskPolling();
+    return true;
+  } catch {
+    taskStatusKnown = true;
+    if (!activeTaskId) setRunning(false);
+    setConnection("Task status unavailable", true);
+    return recoveringActiveTask && Boolean(activeTaskId);
   }
 }
 
@@ -347,6 +446,7 @@ async function readEventStream(response) {
 async function runTask(task) {
   activeTaskId = null;
   let taskStarted = false;
+  let recoveredTask = false;
   setRunning(true);
   clearActivity();
   addActivity("Task submitted", task, "user");
@@ -364,6 +464,12 @@ async function runTask(task) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
+
+      if (response.status === 409) {
+        recoveredTask = await refreshActiveTask({ announce: true });
+        if (recoveredTask) return;
+      }
+
       throw new Error(body.error || "The agent could not start this task.");
     }
 
@@ -377,15 +483,18 @@ async function runTask(task) {
     await refreshContext();
   } catch (error) {
     if (taskStarted) {
-      showRequestError(
-        "The task started, but its live connection was interrupted before a final result arrived. Completed changes were kept. Refresh the dashboard, then review the project before starting another task.",
-        "Task connection interrupted"
-      );
+      recoveredTask = await refreshActiveTask({ announce: true });
+      if (!recoveredTask) {
+        showRequestError(
+          "The task started, but its live connection was interrupted before a final result arrived. Completed changes were kept. Refresh the dashboard, then review the project before starting another task.",
+          "Task connection interrupted"
+        );
+      }
     } else {
       showRequestError(error.message || "The local agent is unavailable.");
     }
   } finally {
-    setRunning(false);
+    if (!recoveredTask) setRunning(false);
   }
 }
 
@@ -403,7 +512,12 @@ async function cancelTask() {
       body: JSON.stringify({ taskId: activeTaskId }),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "The task could not be cancelled.");
+    if (!response.ok) {
+      if (response.status === 409 && !(await refreshActiveTask({ announceCompletion: true }))) {
+        return;
+      }
+      throw new Error(body.error || "The task could not be cancelled.");
+    }
 
     addActivity("Cancellation requested", "Finishing the current safe step and closing the task.");
   } catch (error) {
@@ -445,5 +559,7 @@ for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   });
 }
 
+setRunning(false);
+refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();
 refreshModelHealth();
