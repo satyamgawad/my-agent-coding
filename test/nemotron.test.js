@@ -28,6 +28,19 @@ test("Nemotron prompt documents exactly the registered tool names and contracts"
     }
     assert.doesNotMatch(prompt, /deleteFile/);
     assert.match(prompt, /never pass the selected project name as a file-tool directory/);
+    assert.match(prompt, /Application delivery standard:/);
+    assert.match(prompt, /keyboard-operable controls/);
+    assert.match(prompt, /behavior-focused tests/);
+    assert.match(prompt, /Full-stack delivery standard:/);
+    assert.match(prompt, /Default to SQLite for a local or single-instance application/);
+    assert.match(prompt, /Never store plaintext passwords/);
+    assert.match(prompt, /GitHub as an opt-in integration/);
+    assert.match(prompt, /Code craftsmanship standard:/);
+    assert.match(prompt, /smallest coherent change/);
+    assert.match(prompt, /regression test should fail before the fix/);
+    assert.match(prompt, /Response and decision standard:/);
+    assert.match(prompt, /Lead with the outcome/);
+    assert.match(prompt, /time-sensitive, external, or specialized fact/);
 });
 
 test("Nemotron sends the current task and normalizes a provider response", async () => {

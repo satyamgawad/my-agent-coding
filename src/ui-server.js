@@ -4,11 +4,15 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import Agent from "./agent.js";
+import EvaluationSuite from "./evaluation-suite.js";
+import GitHubPublisher from "./github-publisher.js";
 import ModelHealth from "./model-health.js";
 import ModelRouter, { MODEL_MODES } from "./model-router.js";
 import Nemotron, { listNvidiaModels } from "./nemotron.js";
 import ProjectArtifacts from "./project-artifacts.js";
+import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectRunner from "./project-runner.js";
+import TaskHistory from "./task-history.js";
 import WorkspaceManager from "./workspace.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024;
@@ -222,12 +226,19 @@ export function createUiServer({
     modelHealth = new ModelHealth({ listModels: listNvidiaModels }),
     accessPassword = "",
     allowProjectPreviews = true,
+    githubPublisher,
 } = {}) {
     const workspaceManager = new WorkspaceManager({ agentRoot });
+    const evaluationSuite = new EvaluationSuite();
     const projectArtifacts = new ProjectArtifacts(workspaceManager);
+    const publisher = githubPublisher || new GitHubPublisher({ projectArtifacts });
+    const projectEvaluator = new ProjectEvaluator(workspaceManager);
     const projectRunner = new ProjectRunner(workspaceManager);
+    const taskHistory = new TaskHistory({ workspaceManager });
     const unavailableProfiles = new Map();
     let activeTask = null;
+    let evaluationRun = null;
+    let evaluationRunMode = null;
     let taskSequence = 0;
 
     const server = createServer(async (request, response) => {
@@ -258,6 +269,58 @@ export function createUiServer({
             return;
         }
 
+        if (request.method === "GET" && url.pathname === "/api/tasks/history") {
+            try {
+                responseJson(response, 200, {
+                    state: "ready",
+                    records: taskHistory.recent(),
+                    message: "Recent task outcomes are saved locally. Task prompts and model responses are not stored.",
+                });
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    records: [],
+                    message: "Local task history is temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/github") {
+            responseJson(response, 200, publisher.status());
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/github/publish") {
+            if (activeTask || evaluationRun) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task or evaluation to finish before publishing source.",
+                });
+                return;
+            }
+
+            let body;
+
+            try {
+                body = await requestJson(request);
+            } catch (error) {
+                responseJson(response, error.status || 400, { error: error.message });
+                return;
+            }
+
+            try {
+                responseJson(response, 200, await publisher.publish({
+                    confirmation: typeof body?.confirmation === "string" ? body.confirmation : "",
+                }));
+            } catch (error) {
+                responseJson(response, error.status || 500, {
+                    error: error.message || "GitHub publishing could not finish.",
+                    code: error.code || "GITHUB_PUBLISH_FAILED",
+                });
+            }
+            return;
+        }
+
         if (request.method === "GET" && url.pathname === "/api/models/health") {
             try {
                 responseJson(response, 200, await modelHealth.check());
@@ -273,6 +336,99 @@ export function createUiServer({
 
         if (request.method === "GET" && url.pathname === "/api/context") {
             responseJson(response, 200, workspaceManager.getContext());
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/projects/evaluation") {
+            try {
+                responseJson(response, 200, projectEvaluator.evaluate());
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    project: null,
+                    score: 0,
+                    message: "Project readiness checks are temporarily unavailable.",
+                    checks: [],
+                });
+            }
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/evaluations") {
+            responseJson(response, 200, evaluationRun
+                ? {
+                    state: "running",
+                    mode: evaluationRunMode || "deterministic",
+                    total: evaluationSuite.scenarios.length,
+                    passed: null,
+                    passRate: null,
+                    completedAt: null,
+                    results: [],
+                    message: "Running local baseline checks in isolated temporary workspaces.",
+                }
+                : evaluationSuite.status());
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/evaluations/run") {
+            let body;
+
+            try {
+                body = await requestJson(request);
+            } catch (error) {
+                responseJson(response, error.status || 400, { error: error.message });
+                return;
+            }
+
+            const evaluationMode = typeof body?.mode === "string" ? body.mode : "deterministic";
+            const modelMode = typeof body?.modelMode === "string" ? body.modelMode : "auto";
+
+            if (!["deterministic", "live"].includes(evaluationMode)) {
+                responseJson(response, 400, { error: "Choose a supported evaluation mode." });
+                return;
+            }
+
+            if (evaluationMode === "live" && (!MODEL_MODES.has(modelMode) || modelMode === "custom")) {
+                responseJson(response, 400, { error: "Choose a supported model mode for the live evaluation." });
+                return;
+            }
+
+            if (evaluationMode === "live" && activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task to finish before running a live model evaluation.",
+                });
+                return;
+            }
+
+            if (evaluationRun) {
+                responseJson(response, 409, {
+                    error: "The evaluation suite is already running.",
+                });
+                return;
+            }
+
+            evaluationRunMode = evaluationMode;
+            evaluationRun = evaluationSuite.run({
+                mode: evaluationMode,
+                createAgentModel: evaluationMode === "live"
+                    ? () => new ModelRouter({
+                        mode: modelMode,
+                        createModel,
+                        unavailableProfiles,
+                    })
+                    : undefined,
+            });
+
+            try {
+                responseJson(response, 200, await evaluationRun);
+            } catch {
+                responseJson(response, 500, {
+                    error: "The evaluation suite could not finish.",
+                });
+            } finally {
+                evaluationRun = null;
+                evaluationRunMode = null;
+            }
             return;
         }
 
@@ -442,6 +598,7 @@ export function createUiServer({
             const taskRecord = {
                 id: `task-${++taskSequence}`,
                 controller: new AbortController(),
+                startedAt: Date.now(),
             };
             activeTask = taskRecord;
             response.writeHead(200, {
@@ -475,10 +632,13 @@ export function createUiServer({
                 },
             });
 
+            let taskSucceeded = false;
+
             try {
                 const result = await agent.run(task, { signal: taskRecord.controller.signal });
+                taskSucceeded = !isTaskFailure(result);
                 responseEvent(response, "result", {
-                    ok: !isTaskFailure(result),
+                    ok: taskSucceeded,
                     result,
                     model: model.activeProfile?.label || null,
                     cancelled: taskRecord.controller.signal.aborted,
@@ -490,6 +650,19 @@ export function createUiServer({
                     cancelled: taskRecord.controller.signal.aborted,
                 });
             } finally {
+                try {
+                    taskHistory.record({
+                        createdAt: new Date(taskRecord.startedAt).toISOString(),
+                        project: workspaceManager.getContext().project,
+                        model: model.activeProfile?.label || null,
+                        ok: taskSucceeded,
+                        cancelled: taskRecord.controller.signal.aborted,
+                        durationMs: Date.now() - taskRecord.startedAt,
+                    });
+                } catch {
+                    // Task history is a local convenience. Its failure must not
+                    // change the task's result or expose filesystem details.
+                }
                 stopHeartbeat();
                 if (activeTask === taskRecord) {
                     activeTask = null;

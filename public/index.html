@@ -113,6 +113,17 @@
             </div>
             <p class="preview-scope">The web preview safely shows static HTML, CSS, images, and browser-side JavaScript. Projects that need a server, database, or secrets still use <strong>Run project</strong> locally or their own deployment.</p>
           </section>
+          <section class="project-evaluation" aria-labelledby="project-evaluation-title">
+            <div class="evaluation-heading">
+              <div>
+                <p class="muted-label">PROJECT READINESS</p>
+                <h3 id="project-evaluation-title">Engineering checks</h3>
+              </div>
+              <p class="evaluation-score" aria-label="Project readiness score"><strong id="evaluation-score">—</strong><span>/100</span></p>
+            </div>
+            <p class="evaluation-summary" id="evaluation-summary" aria-live="polite">Select a project to see its local engineering readiness checks.</p>
+            <ul class="evaluation-checks" id="evaluation-checks" aria-label="Project readiness checks"></ul>
+          </section>
         </aside>
       </section>
 
@@ -143,6 +154,50 @@
           </div>
           <p class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</p>
         </article>
+      </section>
+
+      <section class="agent-evaluation-card" aria-labelledby="agent-evaluation-title">
+        <div class="card-heading compact">
+          <div>
+            <p class="eyebrow">AGENT EVALUATIONS</p>
+            <h2 id="agent-evaluation-title">Core baseline</h2>
+          </div>
+          <div class="evaluation-run-actions">
+            <button class="evaluation-run-button" id="run-evaluations" type="button">Run baseline</button>
+            <button class="evaluation-run-button is-live" id="run-live-evaluations" type="button">Run live model</button>
+          </div>
+        </div>
+        <div class="agent-evaluation-summary">
+          <p id="evaluation-status" aria-live="polite">Loading local baseline status…</p>
+          <strong id="evaluation-pass-rate">—</strong>
+        </div>
+        <ul class="agent-evaluation-results" id="evaluation-results" aria-label="Agent evaluation results"></ul>
+        <p class="evaluation-scope">Runs isolated checks for application build, safe existing-project changes, and protected-file handling. <strong>Run live model</strong> uses the selected NVIDIA model route and can use API credits; the baseline does not.</p>
+      </section>
+
+      <section class="task-history-card" aria-labelledby="task-history-title">
+        <div class="card-heading compact">
+          <div>
+            <p class="eyebrow">LOCAL DATABASE</p>
+            <h2 id="task-history-title">Private task history</h2>
+          </div>
+          <span class="history-badge">SQLite</span>
+        </div>
+        <p class="history-summary" id="history-summary" aria-live="polite">Loading local task history…</p>
+        <ul class="history-list" id="history-list" aria-label="Recent task outcomes"></ul>
+      </section>
+
+      <section class="github-card" aria-labelledby="github-title">
+        <div class="card-heading compact">
+          <div>
+            <p class="eyebrow">GITHUB DELIVERY</p>
+            <h2 id="github-title">Source sync</h2>
+          </div>
+          <span class="github-badge" id="github-badge">Checking</span>
+        </div>
+        <p class="github-summary" id="github-summary" aria-live="polite">Checking GitHub configuration…</p>
+        <button class="github-publish-button" id="publish-github" type="button" disabled>Publish current project</button>
+        <p class="github-scope">Publishes only safe project source after confirmation. It never sends environment files, dependencies, keys, Git data, or deletes remote files.</p>
       </section>
     </main>
 

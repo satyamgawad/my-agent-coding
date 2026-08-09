@@ -169,7 +169,11 @@ export default class ModelRouter {
     }
 
     async generate(prompt, options) {
-        this.selectRoute(prompt);
+        this.selectRoute(
+            typeof options?.task === "string" && options.task.trim()
+                ? options.task
+                : prompt
+        );
 
         while (true) {
             try {

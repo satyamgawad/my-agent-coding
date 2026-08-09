@@ -66,7 +66,7 @@ h1 em { color: var(--acid); font-family: Georgia, "Times New Roman", serif; font
 .workbench, .observatory { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: 18px; }
 .observatory { grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); margin-top: 18px; }
 
-.task-card, .workspace-card, .activity-card, .result-card {
+.task-card, .workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -75,7 +75,7 @@ h1 em { color: var(--acid); font-family: Georgia, "Times New Roman", serif; font
 }
 
 .task-card { padding: 25px; }
-.workspace-card, .activity-card, .result-card { padding: 23px; }
+.workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 23px; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .card-heading.compact { align-items: center; }
 .card-heading h2 { margin: 6px 0 0; font-size: 19px; letter-spacing: -.04em; }
@@ -182,6 +182,20 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .preview-scope { margin: 11px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
 .preview-scope strong { color: var(--muted); font-weight: 800; }
 
+.project-evaluation { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }
+.evaluation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.project-evaluation h3 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.03em; }
+.evaluation-score { display: inline-flex; align-items: baseline; gap: 2px; margin: 0; color: #818a80; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; }
+.evaluation-score strong { color: var(--acid); font-size: 23px; letter-spacing: -.08em; }
+.evaluation-summary { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.evaluation-checks { display: grid; gap: 6px; margin: 13px 0 0; padding: 0; list-style: none; }
+.evaluation-check { display: grid; grid-template-columns: 7px minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 8px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 8px; background: rgba(0, 0, 0, .1); }
+.evaluation-check::before { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: #747b73; content: ""; }
+.evaluation-check.is-pass::before { background: var(--aqua); box-shadow: 0 0 0 3px rgba(137, 229, 206, .1); }
+.evaluation-check.is-fail::before { background: var(--coral); box-shadow: 0 0 0 3px rgba(255, 156, 122, .1); }
+.evaluation-check strong { display: block; font-size: 11px; letter-spacing: -.01em; }
+.evaluation-check p { margin: 2px 0 0; color: #8b928a; font-size: 10px; line-height: 1.35; }
+
 .preview-dialog {
   width: min(1180px, calc(100vw - 32px));
   max-width: none;
@@ -224,13 +238,52 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .result-card.is-success .result-mark { color: var(--acid); }
 .result-card.is-error .result-mark { color: var(--coral); }
 
+.agent-evaluation-card { margin-top: 18px; }
+.evaluation-run-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.evaluation-run-button { border: 1px solid rgba(137, 229, 206, .5); border-radius: 8px; padding: 8px 10px; color: var(--aqua); background: rgba(137, 229, 206, .08); font-size: 11px; font-weight: 800; }
+.evaluation-run-button:hover:not(:disabled), .evaluation-run-button:focus-visible { border-color: var(--aqua); background: rgba(137, 229, 206, .16); outline: none; }
+.evaluation-run-button:disabled { cursor: wait; opacity: .5; }
+.evaluation-run-button.is-live { border-color: rgba(216, 252, 106, .45); color: var(--acid); background: rgba(216, 252, 106, .07); }
+.evaluation-run-button.is-live:hover:not(:disabled), .evaluation-run-button.is-live:focus-visible { border-color: var(--acid); background: rgba(216, 252, 106, .15); }
+.agent-evaluation-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-top: 19px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.agent-evaluation-summary p { max-width: 720px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.agent-evaluation-summary strong { color: var(--acid); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 23px; letter-spacing: -.08em; white-space: nowrap; }
+.agent-evaluation-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 15px 0 0; padding: 0; list-style: none; }
+.agent-evaluation-result { min-width: 0; padding: 11px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px; background: rgba(0, 0, 0, .1); }
+.agent-evaluation-result.is-pass { border-color: rgba(137, 229, 206, .25); }
+.agent-evaluation-result.is-fail { border-color: rgba(255, 156, 122, .35); }
+.agent-evaluation-result strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.agent-evaluation-result p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.agent-evaluation-result .evaluation-meta { color: #858d83; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; }
+.evaluation-scope { margin: 14px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
+
+.task-history-card { margin-top: 18px; }
+.history-badge { border: 1px solid rgba(216, 252, 106, .34); border-radius: 999px; padding: 5px 8px; color: var(--acid); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.history-summary { margin: 15px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.history-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.history-item, .history-empty { min-width: 0; padding: 11px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px; background: rgba(0, 0, 0, .1); }
+.history-item.is-complete { border-color: rgba(137, 229, 206, .28); }
+.history-item.is-cancelled, .history-item.is-failed { border-color: rgba(255, 156, 122, .34); }
+.history-item strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.history-item p, .history-empty { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.history-empty { grid-column: 1 / -1; margin: 0; color: #858d83; }
+
+.github-card { margin-top: 18px; }
+.github-badge { border: 1px solid rgba(255, 156, 122, .34); border-radius: 999px; padding: 5px 8px; color: var(--coral); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.github-badge.is-ready { border-color: rgba(137, 229, 206, .34); color: var(--aqua); }
+.github-summary { margin: 15px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.github-publish-button { display: inline-flex; align-items: center; justify-content: center; min-height: 35px; margin-top: 14px; border: 1px solid rgba(216, 252, 106, .48); border-radius: 8px; padding: 8px 11px; color: var(--acid); background: rgba(216, 252, 106, .08); font-size: 11px; font-weight: 800; }
+.github-publish-button:hover:not(:disabled), .github-publish-button:focus-visible { border-color: var(--acid); background: rgba(216, 252, 106, .16); outline: none; }
+.github-publish-button:disabled { cursor: not-allowed; opacity: .45; }
+.github-scope { margin: 11px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
+
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @media (max-width: 760px) {
   .shell { width: min(100% - 28px, 560px); padding-top: 16px; }
   .intro { padding: 54px 0 35px; }
   .workbench, .observatory { grid-template-columns: 1fr; }
-  .task-card, .workspace-card, .activity-card, .result-card { padding: 19px; border-radius: 14px; }
+  .task-card, .workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 19px; border-radius: 14px; }
   .task-footer { align-items: flex-start; flex-direction: column; }
   .task-actions { width: 100%; }
   .run-button, .cancel-button { flex: 1; }
@@ -247,6 +300,9 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
   .preview-dialog-actions { flex: 0 0 auto; }
   .preview-dialog iframe { height: min(62vh, 560px); }
   .preview-dialog-note { padding: 9px 15px; }
+  .agent-evaluation-summary { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .agent-evaluation-results { grid-template-columns: 1fr; }
+  .history-list { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

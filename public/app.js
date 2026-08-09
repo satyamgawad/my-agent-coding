@@ -16,6 +16,19 @@ const runnerStatus = document.querySelector("#runner-status");
 const previewProjectButton = document.querySelector("#preview-project");
 const downloadProject = document.querySelector("#download-project");
 const deliveryStatus = document.querySelector("#delivery-status");
+const evaluationScore = document.querySelector("#evaluation-score");
+const evaluationSummary = document.querySelector("#evaluation-summary");
+const evaluationChecks = document.querySelector("#evaluation-checks");
+const runEvaluationsButton = document.querySelector("#run-evaluations");
+const runLiveEvaluationsButton = document.querySelector("#run-live-evaluations");
+const agentEvaluationStatus = document.querySelector("#evaluation-status");
+const agentEvaluationPassRate = document.querySelector("#evaluation-pass-rate");
+const agentEvaluationResults = document.querySelector("#evaluation-results");
+const historySummary = document.querySelector("#history-summary");
+const historyList = document.querySelector("#history-list");
+const githubBadge = document.querySelector("#github-badge");
+const githubSummary = document.querySelector("#github-summary");
+const publishGitHubButton = document.querySelector("#publish-github");
 const previewDialog = document.querySelector("#preview-dialog");
 const previewFrame = document.querySelector("#project-preview-frame");
 const closePreviewButton = document.querySelector("#close-preview");
@@ -54,6 +67,33 @@ let staticPreviewStatus = {
   url: "/api/projects/preview/",
   available: false,
   message: "Select a project to preview its static website or download a safe source archive.",
+};
+let projectEvaluation = {
+  state: "idle",
+  project: null,
+  score: 0,
+  message: "Select a project to see its local engineering readiness checks.",
+  checks: [],
+};
+let agentEvaluation = {
+  state: "loading",
+  total: 0,
+  passed: 0,
+  passRate: null,
+  message: "Loading local baseline status…",
+  results: [],
+};
+let taskHistory = {
+  state: "loading",
+  records: [],
+  message: "Loading local task history…",
+};
+let githubStatus = {
+  state: "loading",
+  configured: false,
+  repository: null,
+  branch: null,
+  message: "Checking GitHub configuration…",
 };
 let activeTaskId = null;
 let taskStatusKnown = false;
@@ -346,6 +386,250 @@ function renderStaticPreview() {
     || "This project has no safe static entry page to preview here. Its safe source archive is still available to download.";
 }
 
+function renderProjectEvaluation() {
+  evaluationScore.textContent = workspaceContext.project ? String(projectEvaluation.score ?? 0) : "—";
+  evaluationSummary.textContent = projectEvaluation.message
+    || "Project readiness checks are temporarily unavailable.";
+  evaluationChecks.textContent = "";
+
+  for (const check of projectEvaluation.checks || []) {
+    const item = document.createElement("li");
+    item.className = `evaluation-check is-${check.status || "warn"}`;
+
+    const copy = document.createElement("div");
+    const label = document.createElement("strong");
+    label.textContent = check.label || "Project check";
+    const detail = document.createElement("p");
+    detail.textContent = check.detail || "No detail is available.";
+    copy.append(label, detail);
+    item.append(copy);
+    evaluationChecks.append(item);
+  }
+}
+
+async function refreshProjectEvaluation() {
+  const projectAtRequest = workspaceContext.project;
+
+  if (!projectAtRequest) {
+    projectEvaluation = {
+      state: "idle",
+      project: null,
+      score: 0,
+      message: "Select a project to see its local engineering readiness checks.",
+      checks: [],
+    };
+    renderProjectEvaluation();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/projects/evaluation", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Project readiness checks are unavailable.");
+    const evaluation = await response.json();
+    if (workspaceContext.project !== projectAtRequest) return;
+    projectEvaluation = evaluation;
+  } catch {
+    if (workspaceContext.project !== projectAtRequest) return;
+    projectEvaluation = {
+      state: "unavailable",
+      project: projectAtRequest,
+      score: 0,
+      message: "Project readiness checks are temporarily unavailable.",
+      checks: [],
+    };
+  }
+
+  renderProjectEvaluation();
+}
+
+function renderAgentEvaluation() {
+  const isRunning = agentEvaluation.state === "running";
+  runEvaluationsButton.disabled = isRunning;
+  runLiveEvaluationsButton.disabled = isRunning;
+  runEvaluationsButton.textContent = isRunning ? "Running…" : "Run baseline";
+  runLiveEvaluationsButton.textContent = isRunning ? "Running…" : "Run live model";
+  agentEvaluationStatus.textContent = agentEvaluation.message
+    || "The local baseline is temporarily unavailable.";
+  agentEvaluationPassRate.textContent = agentEvaluation.passRate === null
+    ? "—"
+    : `${agentEvaluation.passRate}%`;
+  agentEvaluationResults.textContent = "";
+
+  for (const result of agentEvaluation.results || []) {
+    const item = document.createElement("li");
+    item.className = `agent-evaluation-result is-${result.status || "fail"}`;
+    const title = document.createElement("strong");
+    title.textContent = `${result.status === "pass" ? "✓" : "!"} ${result.title || "Evaluation"}`;
+    const summary = document.createElement("p");
+    summary.textContent = result.summary || "No result summary is available.";
+    const meta = document.createElement("p");
+    meta.className = "evaluation-meta";
+    meta.textContent = `${result.steps ?? 0} steps · ${result.durationMs ?? 0} ms · ${result.modelRoute || "local"}`;
+    item.append(title, summary, meta);
+    agentEvaluationResults.append(item);
+  }
+}
+
+async function refreshAgentEvaluation() {
+  try {
+    const response = await fetch("/api/evaluations", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("The evaluation suite is unavailable.");
+    agentEvaluation = await response.json();
+  } catch {
+    agentEvaluation = {
+      state: "unavailable",
+      total: 0,
+      passed: 0,
+      passRate: null,
+      message: "The local baseline is temporarily unavailable.",
+      results: [],
+    };
+  }
+
+  renderAgentEvaluation();
+}
+
+function historyDate(value) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf())
+    ? "Unknown time"
+    : parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderTaskHistory() {
+  historySummary.textContent = taskHistory.message || "Local task history is temporarily unavailable.";
+  historyList.textContent = "";
+
+  if ((taskHistory.records || []).length === 0) {
+    const item = document.createElement("li");
+    item.className = "history-empty";
+    item.textContent = taskHistory.state === "ready"
+      ? "Completed task outcomes will appear here."
+      : "No task history is available.";
+    historyList.append(item);
+    return;
+  }
+
+  for (const record of taskHistory.records) {
+    const item = document.createElement("li");
+    item.className = `history-item is-${record.status || "failed"}`;
+    const title = document.createElement("strong");
+    const state = record.status === "complete" ? "Completed" : record.status === "cancelled" ? "Cancelled" : "Needs attention";
+    title.textContent = `${state}${record.project ? ` · ${record.project}` : ""}`;
+    const detail = document.createElement("p");
+    detail.textContent = `${historyDate(record.createdAt)} · ${record.durationMs ?? 0} ms${record.model ? ` · ${record.model}` : ""}`;
+    item.append(title, detail);
+    historyList.append(item);
+  }
+}
+
+async function refreshTaskHistory() {
+  try {
+    const response = await fetch("/api/tasks/history", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Local task history is unavailable.");
+    taskHistory = await response.json();
+  } catch {
+    taskHistory = {
+      state: "unavailable",
+      records: [],
+      message: "Local task history is temporarily unavailable.",
+    };
+  }
+
+  renderTaskHistory();
+}
+
+function renderGitHubStatus() {
+  const ready = githubStatus.state === "ready" && githubStatus.configured && Boolean(workspaceContext.project);
+  githubBadge.textContent = githubStatus.state === "ready" ? "Ready" : "Not configured";
+  githubBadge.classList.toggle("is-ready", githubStatus.state === "ready");
+  githubSummary.textContent = githubStatus.message || "GitHub configuration is temporarily unavailable.";
+  publishGitHubButton.disabled = !ready;
+  publishGitHubButton.textContent = ready ? "Publish current project" : "GitHub not configured";
+}
+
+async function refreshGitHubStatus() {
+  try {
+    const response = await fetch("/api/github", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("GitHub configuration is unavailable.");
+    githubStatus = await response.json();
+  } catch {
+    githubStatus = {
+      state: "unavailable",
+      configured: false,
+      repository: null,
+      branch: null,
+      message: "GitHub configuration is temporarily unavailable.",
+    };
+  }
+
+  renderGitHubStatus();
+}
+
+async function publishGitHubProject() {
+  if (publishGitHubButton.disabled || !githubStatus.repository) return;
+
+  const confirmed = window.confirm(
+    `Publish the current project to ${githubStatus.repository} on ${githubStatus.branch}? This adds or updates safe source files; it does not delete remote files.`
+  );
+  if (!confirmed) return;
+
+  publishGitHubButton.disabled = true;
+  publishGitHubButton.textContent = "Publishing…";
+
+  try {
+    const response = await fetch("/api/github/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ confirmation: githubStatus.repository }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "GitHub publishing could not finish.");
+    githubStatus = { ...githubStatus, message: body.message };
+    addActivity("Published project source", `${body.created} created · ${body.updated} updated · ${body.repository}`);
+  } catch (error) {
+    githubStatus = { ...githubStatus, message: error.message || "GitHub publishing could not finish." };
+    addActivity("GitHub publishing failed", githubStatus.message, "failed");
+  }
+
+  renderGitHubStatus();
+}
+
+async function runAgentEvaluations(mode = "deterministic") {
+  const isLive = mode === "live";
+  runEvaluationsButton.disabled = true;
+  runLiveEvaluationsButton.disabled = true;
+  runEvaluationsButton.textContent = "Running…";
+  runLiveEvaluationsButton.textContent = "Running…";
+  agentEvaluationStatus.textContent = isLive
+    ? "Running live model checks with the selected model route…"
+    : "Running isolated local baseline checks…";
+
+  try {
+    const response = await fetch("/api/evaluations/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ mode, modelMode: modelMode.value }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "The evaluation suite could not finish.");
+    agentEvaluation = body;
+    addActivity(
+      "Evaluation baseline completed",
+      `${body.passed}/${body.total} ${isLive ? "live model" : "local baseline"} checks passed.`
+    );
+  } catch (error) {
+    agentEvaluation = {
+      ...agentEvaluation,
+      state: "unavailable",
+      message: error.message || "The evaluation suite could not finish.",
+    };
+    addActivity("Evaluation baseline failed", agentEvaluation.message, "failed");
+  }
+
+  renderAgentEvaluation();
+}
+
 function normalizeStaticPreviewStatus(payload, responseStatus) {
   const reportedState = typeof payload?.state === "string"
     ? payload.state
@@ -548,6 +832,8 @@ async function refreshContext() {
     await Promise.all([
       refreshProjectStatus(),
       refreshStaticPreviewStatus(),
+      refreshProjectEvaluation(),
+      refreshGitHubStatus(),
     ]);
   } catch {
     setConnection("Workspace offline", true);
@@ -567,6 +853,7 @@ async function selectProject(name) {
     workspaceContext = body;
     closeStaticPreview();
     await refreshContext();
+    await refreshTaskHistory();
     addActivity(`Selected ${name}`, "It is ready to run or receive a new task.");
   } catch (error) {
     showRequestError(error.message || "The project could not be selected.");
@@ -790,6 +1077,9 @@ previewDialog.addEventListener("click", (event) => {
   if (event.target === previewDialog) closeStaticPreview();
 });
 cancelButton.addEventListener("click", cancelTask);
+runEvaluationsButton.addEventListener("click", () => runAgentEvaluations());
+runLiveEvaluationsButton.addEventListener("click", () => runAgentEvaluations("live"));
+publishGitHubButton.addEventListener("click", publishGitHubProject);
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {
@@ -802,3 +1092,6 @@ setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();
 refreshModelHealth();
+refreshAgentEvaluation();
+refreshTaskHistory();
+refreshGitHubStatus();

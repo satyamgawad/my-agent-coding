@@ -545,4 +545,44 @@ export default class ProjectArtifacts {
             contents: archive,
         };
     }
+
+    sourceFiles() {
+        const { project, workspace } = this.activeProject();
+        const files = safeArchiveFiles(workspace);
+
+        if (files.length === 0) {
+            throw artifactError(
+                "The active project has no safe source files to publish.",
+                "PROJECT_SOURCE_EMPTY",
+                404
+            );
+        }
+
+        let totalBytes = 0;
+        const sourceFiles = files.map((file) => {
+            const loaded = readBoundedFile(
+                workspace,
+                file.relativePath,
+                MAX_ARCHIVE_FILE_BYTES,
+                "PROJECT_SOURCE_TOO_LARGE",
+                `A project file is larger than ${MAX_ARCHIVE_FILE_BYTES} bytes.`
+            );
+            totalBytes += loaded.contents.length;
+
+            if (totalBytes > MAX_ARCHIVE_BYTES) {
+                throw artifactError(
+                    "The active project is too large to publish safely.",
+                    "PROJECT_SOURCE_TOO_LARGE",
+                    413
+                );
+            }
+
+            return {
+                path: file.relativePath,
+                contents: loaded.contents,
+            };
+        });
+
+        return { project, files: sourceFiles };
+    }
 }

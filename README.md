@@ -13,6 +13,13 @@ my-agent/
     └── portfolio/
 ```
 
+The private dashboard also maintains its own small SQLite database at
+`projects/.agent-data/task-history.sqlite`. It records only task outcome
+metadata (time, active project, selected model route, duration, and status),
+not task prompts or model responses. This needs no Supabase account, extra
+package, or external network connection. The folder is hidden from the agent's
+project list and is preserved by the Railway volume described below.
+
 ## Install and configure
 
 Use Node.js 22 or later.
@@ -48,6 +55,16 @@ NVIDIA_MODEL=provider/model-id
 ```
 
 Use either `NVIDIA_MODEL_MODE` or `NVIDIA_MODEL`; leave both out to use Auto.
+
+For unusually large multi-file tasks, you can raise the agent's step budget
+from its default of 30 to a value between 10 and 100:
+
+```dotenv
+AGENT_MAX_STEPS=60
+```
+
+Higher budgets can complete longer tasks, but also increase latency and model
+usage. The normal safety and verification gates still apply.
 
 Keep `.env` private. It is ignored by Git and unavailable to the agent's tools.
 
@@ -86,6 +103,70 @@ files. Do not hard-code credentials in ordinary source files.
 The dashboard also checks whether its configured model routes are currently
 available. A status-check problem does not expose your key or prevent a task
 from using its normal retry and fallback behavior.
+
+### Full-stack application building
+
+The agent is trained to build applications with a database, authentication,
+deployment setup, and GitHub automation when the task calls for them. It
+defaults to SQLite for local or single-instance apps, with validated,
+parameterized data access and tested schema setup; Supabase is not required.
+For shared production data, ask it to use your chosen Postgres provider.
+
+For authentication, it is instructed to use hashed passwords, secure
+server-side sessions, authorization checks, logout, and meaningful error
+states—never plaintext passwords or browser-exposed secrets. Deployment work
+includes a `.env.example`, health checks where relevant, and documented
+database/persistent-storage requirements. GitHub changes are opt-in: the agent
+will not create repositories, push code, or use a token without a confirmed
+repository and explicit authorization.
+
+### Optional GitHub source publishing
+
+The dashboard can publish an active generated project to one existing GitHub
+repository. It is deliberately disabled until you configure it. Create a
+fine-grained GitHub token limited to that repository with **Contents: Read and
+write**, then add the following secrets locally or in Railway's Variables tab:
+
+```dotenv
+GITHUB_TOKEN=github_pat_your_token
+GITHUB_REPOSITORY=your-account/your-existing-repository
+GITHUB_BRANCH=main
+```
+
+The dashboard shows the configured target and asks for a final confirmation
+before every publish. Publishing adds or updates only safe project source
+files; it omits environment files, tokens, keys, dependencies, symlinks, and
+Git metadata, and never deletes remote files. It does not create repositories,
+branches, pull requests, or GitHub Actions secrets. Keep the token out of Git
+and do not paste it into a task prompt.
+
+### Project intelligence
+
+When you ask the agent to change an existing selected project, it locally
+retrieves a small set of relevant source and documentation snippets before the
+first model request. This keeps requests grounded in the active codebase
+without a vector database or additional credentials. Retrieval excludes `.env`
+files, Git data, dependencies, symlinks, and oversized files; retrieved source
+is treated as untrusted data, never as instructions.
+
+The dashboard also shows local **Project readiness** checks for the selected
+project. They score implementation files, a valid `package.json`, behavior
+tests with assertions, test/build commands, and optional README notes. This is
+a deterministic engineering checklist—not a claim that the model or app is
+fully correct—so use it alongside the agent's actual build and test results.
+
+The **Agent evaluations** card runs a separate, isolated baseline suite. It
+checks the agent harness can build and test a small application, make a safe
+existing-project change, and reject a protected-file write. Results report the
+pass rate, steps, duration, and verification summary. This baseline never calls
+the model API or spends model credits; it validates the agent workflow rather
+than measuring a live model's coding ability.
+
+Use **Run live model** only when you want to spend credits measuring the
+configured NVIDIA model route on the same scenarios. Live runs remain isolated
+from your generated projects, but their results are real model measurements and
+can fail because of model availability, task complexity, or an incomplete
+implementation.
 
 ### Private Docker hosting
 
@@ -140,7 +221,7 @@ AGENT_UI_PASSWORD=a-long-unique-password-with-at-least-16-characters
 ```
 
 Then add a Railway Volume mounted at `/app/projects` so generated projects
-survive deployments, and generate a public Railway domain. The dashboard will
+and its local SQLite task history survive deployments, and generate a public Railway domain. The dashboard will
 ask for username `agent` and your `AGENT_UI_PASSWORD`. Railway supplies the
 runtime port automatically; do not add `PORT`, `AGENT_UI_HOST`, or your local
 `.env` file as Railway variables. Keep the service at one replica because the

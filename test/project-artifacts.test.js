@@ -132,6 +132,15 @@ test("source downloads exclude links, secrets, dependency trees, and key materia
         "preview-demo/src/main.js",
     ]);
     assert.doesNotMatch(contents, /private key|secret git config|_authToken/i);
+
+    const publishable = artifacts.sourceFiles();
+    assert.equal(publishable.project, "preview-demo");
+    assert.deepEqual(publishable.files.map((file) => file.path), [
+        ".gitignore",
+        "public.html",
+        "src/main.js",
+    ]);
+    assert.doesNotMatch(Buffer.concat(publishable.files.map((file) => file.contents)).toString("utf8"), /private key|secret git config|_authToken/i);
 });
 
 test("preview and download operations report unavailable projects and enforce their size caps", (t) => {

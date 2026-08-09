@@ -143,7 +143,7 @@ export default class WorkspaceManager {
 
         return fs
             .readdirSync(projectsRoot, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+            .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && !entry.name.startsWith("."))
             .map((entry) => entry.name)
             .sort();
     }

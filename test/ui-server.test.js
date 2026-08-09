@@ -41,6 +41,8 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Give it a task/);
     assert.match(await (await fetch(baseUrl)).text(), /Run project/);
+    assert.match(await (await fetch(baseUrl)).text(), /Private task history/);
+    assert.match(await (await fetch(baseUrl)).text(), /Source sync/);
     assert.match(page.headers.get("content-security-policy"), /default-src 'self'/);
     assert.equal(page.headers.get("x-frame-options"), "DENY");
 
@@ -49,6 +51,13 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
         project: null,
         workspace: null,
         projects: [],
+    });
+
+    const taskHistory = await fetch(`${baseUrl}/api/tasks/history`);
+    assert.deepEqual(await taskHistory.json(), {
+        state: "ready",
+        records: [],
+        message: "Recent task outcomes are saved locally. Task prompts and model responses are not stored.",
     });
 
     fs.mkdirSync(path.join(root, "projects", "notes-app"), { recursive: true });
@@ -83,6 +92,66 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.match(stream, /DeepSeek V4 Flash/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
+
+    const completedHistory = await fetch(`${baseUrl}/api/tasks/history`);
+    const historyBody = await completedHistory.json();
+    assert.equal(historyBody.records.length, 1);
+    assert.equal(historyBody.records[0].status, "complete");
+    assert.equal(historyBody.records[0].project, "notes-app");
+    assert.equal(historyBody.records[0].model, "DeepSeek V4 Flash");
+    assert.equal(Object.hasOwn(historyBody.records[0], "task"), false);
+});
+
+test("the dashboard exposes configured GitHub publishing only after repository confirmation", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const calls = [];
+    const githubPublisher = {
+        status() {
+            return {
+                state: "ready",
+                configured: true,
+                repository: "owner/generated-apps",
+                branch: "main",
+                message: "Ready to publish safe source files to owner/generated-apps (main).",
+            };
+        },
+        async publish({ confirmation }) {
+            calls.push(confirmation);
+            if (confirmation !== "owner/generated-apps") {
+                const error = new Error("Confirm the configured GitHub repository before publishing.");
+                error.code = "GITHUB_REPOSITORY_NOT_CONFIRMED";
+                error.status = 409;
+                throw error;
+            }
+            return { state: "complete", total: 2, created: 2, updated: 0, repository: "owner/generated-apps" };
+        },
+    };
+    const server = createUiServer({ agentRoot: root, githubPublisher });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const status = await fetch(`${baseUrl}/api/github`);
+    assert.deepEqual(await status.json(), githubPublisher.status());
+
+    const denied = await fetch(`${baseUrl}/api/github/publish`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "owner/wrong" }),
+    });
+    assert.equal(denied.status, 409);
+    assert.equal(calls.length, 1);
+
+    const published = await fetch(`${baseUrl}/api/github/publish`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "owner/generated-apps" }),
+    });
+    assert.equal(published.status, 200);
+    assert.deepEqual(await published.json(), { state: "complete", total: 2, created: 2, updated: 0, repository: "owner/generated-apps" });
 });
 
 test("the dashboard reports cached model route availability without exposing provider failures", async (t) => {
@@ -113,6 +182,89 @@ test("the dashboard reports cached model route availability without exposing pro
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.deepEqual(await response.json(), await modelHealth.check());
+});
+
+test("the dashboard reports deterministic engineering readiness for the active project", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const project = path.join(root, "projects", "calculator");
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({
+        scripts: { test: "node --test", build: "node --check app.js" },
+    }));
+    fs.writeFileSync(path.join(project, "app.js"), "export const add = (left, right) => left + right;\n");
+    fs.writeFileSync(path.join(project, "app.test.js"), 'import assert from "node:assert/strict"; import test from "node:test"; test("adds", () => assert.equal(2 + 3, 5));\n');
+    fs.writeFileSync(path.join(project, "README.md"), "# Calculator\n");
+    const server = createUiServer({ agentRoot: root });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const idle = await fetch(`${baseUrl}/api/projects/evaluation`);
+    assert.deepEqual(await idle.json(), {
+        state: "idle",
+        project: null,
+        score: 0,
+        message: "Select a project to see its local engineering readiness checks.",
+        checks: [],
+    });
+
+    await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "calculator" }),
+    });
+    const evaluation = await fetch(`${baseUrl}/api/projects/evaluation`);
+    const body = await evaluation.json();
+
+    assert.equal(evaluation.status, 200);
+    assert.equal(evaluation.headers.get("cache-control"), "no-store");
+    assert.equal(body.state, "ready");
+    assert.equal(body.score, 100);
+    assert.equal(body.checks.every((item) => item.status === "pass"), true);
+});
+
+test("the dashboard exposes and runs isolated agent baseline evaluations", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({ agentRoot: root });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const idle = await fetch(`${baseUrl}/api/evaluations`);
+    assert.equal(idle.status, 200);
+    assert.deepEqual(await idle.json(), {
+        state: "idle",
+        mode: "deterministic",
+        total: 3,
+        passed: 0,
+        passRate: null,
+        completedAt: null,
+        results: [],
+        message: "Run the local baseline to verify core build, change, and safety behavior.",
+    });
+
+    const run = await fetch(`${baseUrl}/api/evaluations/run`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ mode: "deterministic" }),
+    });
+    const result = await run.json();
+
+    assert.equal(run.status, 200);
+    assert.equal(result.state, "complete");
+    assert.equal(result.passed, 3);
+    assert.equal(result.passRate, 100);
+    assert.equal(result.results.every((item) => item.status === "pass"), true);
+    assert.equal(result.results.every((item) => item.modelRoute === "deterministic fixture"), true);
+
+    const completed = await fetch(`${baseUrl}/api/evaluations`);
+    assert.deepEqual(await completed.json(), result);
 });
 
 test("a protected dashboard requires its configured Basic Auth password", async (t) => {
@@ -399,6 +551,28 @@ test("the dashboard code labels a dropped started stream as a connection interru
 
     assert.match(script, /Task connection interrupted/);
     assert.match(script, /task stream ended before the agent returned a result/i);
+});
+
+test("the dashboard renders local project readiness checks", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /PROJECT READINESS/);
+    assert.match(page, /id="evaluation-score"/);
+    assert.match(script, /\/api\/projects\/evaluation/);
+    assert.match(script, /renderProjectEvaluation/);
+});
+
+test("the dashboard renders and starts the agent baseline evaluation suite", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /AGENT EVALUATIONS/);
+    assert.match(page, /id="run-evaluations"/);
+    assert.match(page, /id="run-live-evaluations"/);
+    assert.match(script, /\/api\/evaluations\/run/);
+    assert.match(script, /runAgentEvaluations/);
+    assert.match(script, /runAgentEvaluations\("live"\)/);
 });
 
 test("the dashboard restores an active task after a reload or a 409 task collision", () => {
