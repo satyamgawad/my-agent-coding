@@ -6,11 +6,22 @@ import { createSandbox } from "./sandbox.js";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 30_000;
+const MAX_TERMINAL_OUTPUT_CHARS = 16 * 1024;
 
 function terminalError(message, code = "UNSAFE_COMMAND") {
     const error = new Error(message);
     error.code = code;
     return error;
+}
+
+function boundedOutput(value) {
+    const output = typeof value === "string" ? value : String(value || "");
+
+    if (output.length <= MAX_TERMINAL_OUTPUT_CHARS) {
+        return output;
+    }
+
+    return `… output truncated; showing the last ${MAX_TERMINAL_OUTPUT_CHARS} characters.\n${output.slice(-MAX_TERMINAL_OUTPUT_CHARS)}`;
 }
 
 function requirePackageJson(command, sandbox) {
@@ -72,7 +83,7 @@ function commandSpec(command, sandbox) {
 export function createTerminalTool(workspaceManager) {
     const sandbox = createSandbox(() => workspaceManager.getActiveWorkspace());
 
-    return async function runTerminal({ command }) {
+    return async function runTerminal({ command }, { signal } = {}) {
         const selectedCommand = commandSpec(command, sandbox);
 
         try {
@@ -84,14 +95,19 @@ export function createTerminalTool(workspaceManager) {
                     maxBuffer: 1024 * 1024,
                     timeout: COMMAND_TIMEOUT_MS,
                     shell: false,
+                    signal,
                 }
             );
 
-            return { stdout, stderr, exitCode: 0 };
+            return {
+                stdout: boundedOutput(stdout),
+                stderr: boundedOutput(stderr),
+                exitCode: 0,
+            };
         } catch (error) {
             return {
-                stdout: error.stdout || "",
-                stderr: error.stderr || error.message,
+                stdout: boundedOutput(error.stdout || ""),
+                stderr: boundedOutput(error.stderr || error.message),
                 exitCode: Number.isInteger(error.code) ? error.code : 1,
             };
         }

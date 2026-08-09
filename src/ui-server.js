@@ -75,7 +75,8 @@ export function createUiServer({
 } = {}) {
     const workspaceManager = new WorkspaceManager({ agentRoot });
     const projectRunner = new ProjectRunner(workspaceManager);
-    let runningTask = false;
+    let activeTask = null;
+    let taskSequence = 0;
 
     const server = createServer(async (request, response) => {
         const url = new URL(request.url || "/", "http://127.0.0.1");
@@ -122,6 +123,36 @@ export function createUiServer({
             return;
         }
 
+        if (request.method === "POST" && url.pathname === "/api/tasks/cancel") {
+            let body;
+
+            try {
+                body = await requestJson(request);
+            } catch (error) {
+                responseJson(response, error.status || 400, { error: error.message });
+                return;
+            }
+
+            const taskId = typeof body?.taskId === "string" ? body.taskId : "";
+
+            if (!activeTask) {
+                responseJson(response, 409, { error: "There is no active task to cancel." });
+                return;
+            }
+
+            if (taskId !== activeTask.id) {
+                responseJson(response, 409, { error: "That task is no longer active." });
+                return;
+            }
+
+            if (!activeTask.controller.signal.aborted) {
+                activeTask.controller.abort(new Error("Task cancelled by user."));
+            }
+
+            responseJson(response, 202, { state: "cancelling", taskId });
+            return;
+        }
+
         if (request.method === "POST" && url.pathname === "/api/tasks") {
             let body;
 
@@ -145,19 +176,24 @@ export function createUiServer({
                 return;
             }
 
-            if (runningTask) {
+            if (activeTask) {
                 responseJson(response, 409, {
                     error: "The agent is already working on a task. Wait for it to finish before starting another.",
                 });
                 return;
             }
 
-            runningTask = true;
+            const taskRecord = {
+                id: `task-${++taskSequence}`,
+                controller: new AbortController(),
+            };
+            activeTask = taskRecord;
             response.writeHead(200, {
                 "content-type": "text/event-stream; charset=utf-8",
                 "cache-control": "no-cache, no-transform",
                 connection: "keep-alive",
                 "x-accel-buffering": "no",
+                "x-task-id": taskRecord.id,
             });
             responseEvent(response, "ready", { message: "The agent is working." });
 
@@ -181,19 +217,23 @@ export function createUiServer({
             });
 
             try {
-                const result = await agent.run(task);
+                const result = await agent.run(task, { signal: taskRecord.controller.signal });
                 responseEvent(response, "result", {
                     ok: !isTaskFailure(result),
                     result,
                     model: model.activeProfile?.label || null,
+                    cancelled: taskRecord.controller.signal.aborted,
                 });
             } catch (error) {
                 responseEvent(response, "result", {
                     ok: false,
                     result: `❌ The agent could not complete this task: ${error.message || String(error)}`,
+                    cancelled: taskRecord.controller.signal.aborted,
                 });
             } finally {
-                runningTask = false;
+                if (activeTask === taskRecord) {
+                    activeTask = null;
+                }
                 response.end();
             }
 
@@ -223,6 +263,7 @@ export function createUiServer({
     });
 
     server.on("close", () => {
+        activeTask?.controller.abort(new Error("The local agent server stopped."));
         projectRunner.stop().catch(() => {});
     });
 

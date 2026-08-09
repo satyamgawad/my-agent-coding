@@ -129,3 +129,24 @@ test("Nemotron accepts an explicit model override for routed tasks", async () =>
 
     assert.equal(requests[0].model, "z-ai/glm-5.2");
 });
+
+test("Nemotron forwards a cancellation signal to the provider request", async () => {
+    const calls = [];
+    const client = {
+        chat: {
+            completions: {
+                async create(request, options) {
+                    calls.push({ request, options });
+                    return { choices: [{ message: { content: "Ready." } }] };
+                },
+            },
+        },
+    };
+    const controller = new AbortController();
+
+    await new Nemotron({ client }).generate("Check the task.", {
+        signal: controller.signal,
+    });
+
+    assert.equal(calls[0].options.signal, controller.signal);
+});

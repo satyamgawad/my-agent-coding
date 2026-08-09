@@ -1,6 +1,7 @@
 const taskForm = document.querySelector("#task-form");
 const taskInput = document.querySelector("#task-input");
 const runButton = document.querySelector("#run-button");
+const cancelButton = document.querySelector("#cancel-button");
 const taskHint = document.querySelector("#task-hint");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
@@ -40,6 +41,7 @@ const modelNotes = {
 
 let workspaceContext = { project: null };
 let projectStatus = { state: "idle", project: null, url: null };
+let activeTaskId = null;
 
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
@@ -56,6 +58,13 @@ function setRunning(isRunning) {
     : "The agent verifies each change before it reports success.";
   activityState.textContent = isRunning ? "Working" : "Ready";
   activityState.classList.toggle("is-working", isRunning);
+  cancelButton.hidden = !isRunning;
+  cancelButton.disabled = !isRunning || !activeTaskId;
+
+  if (!isRunning) {
+    activeTaskId = null;
+    cancelButton.textContent = "Cancel task";
+  }
 }
 
 function clearActivity() {
@@ -271,6 +280,11 @@ async function readEventStream(response) {
       if (eventName === "model") handleModelRoute(parsed);
       if (eventName === "result") {
         showResult(parsed.result, parsed.ok);
+        if (parsed.cancelled) {
+          resultTitle.textContent = "Task cancelled";
+          addActivity("Task cancelled", "Completed changes were kept in the active project.", "failed");
+          continue;
+        }
         const detail = parsed.ok
           ? `${parsed.model ? `Finished with ${parsed.model}. ` : ""}Review the outcome for details.`
           : parsed.result;
@@ -281,6 +295,7 @@ async function readEventStream(response) {
 }
 
 async function runTask(task) {
+  activeTaskId = null;
   setRunning(true);
   clearActivity();
   addActivity("Task submitted", task, "user");
@@ -301,12 +316,38 @@ async function runTask(task) {
       throw new Error(body.error || "The agent could not start this task.");
     }
 
+    activeTaskId = response.headers.get("x-task-id");
+    cancelButton.disabled = !activeTaskId;
     await readEventStream(response);
     await refreshContext();
   } catch (error) {
     showRequestError(error.message || "The local agent is unavailable.");
   } finally {
     setRunning(false);
+  }
+}
+
+async function cancelTask() {
+  if (!activeTaskId) return;
+
+  cancelButton.disabled = true;
+  cancelButton.textContent = "Cancelling…";
+  taskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+
+  try {
+    const response = await fetch("/api/tasks/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ taskId: activeTaskId }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "The task could not be cancelled.");
+
+    addActivity("Cancellation requested", "Finishing the current safe step and closing the task.");
+  } catch (error) {
+    cancelButton.disabled = false;
+    cancelButton.textContent = "Cancel task";
+    addActivity("Could not cancel the task", error.message || "Try again in a moment.", "failed");
   }
 }
 
@@ -333,6 +374,7 @@ modelMode.addEventListener("change", () => {
 });
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
+cancelButton.addEventListener("click", cancelTask);
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {

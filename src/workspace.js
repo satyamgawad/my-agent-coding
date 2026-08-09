@@ -35,6 +35,22 @@ function isInside(parent, candidate) {
     return candidate === parent || candidate.startsWith(`${parent}${path.sep}`);
 }
 
+function nearestExistingPath(target) {
+    let candidate = target;
+
+    while (!fs.existsSync(candidate)) {
+        const parent = path.dirname(candidate);
+
+        if (parent === candidate) {
+            break;
+        }
+
+        candidate = parent;
+    }
+
+    return fs.realpathSync(candidate);
+}
+
 export default class WorkspaceManager {
     constructor({ agentRoot = process.cwd(), projectsDirectory = "projects" } = {}) {
         this.agentRoot = fs.realpathSync(agentRoot);
@@ -50,13 +66,83 @@ export default class WorkspaceManager {
         this.activeProject = null;
     }
 
-    listProjects() {
+    resolveProjectsRoot({ create = false } = {}) {
+        const existingPath = nearestExistingPath(this.projectsRoot);
+
+        if (!isInside(this.agentRoot, existingPath)) {
+            throw workspaceError(
+                "Access denied: the projects directory resolves outside the agent directory.",
+                "PROJECTS_ROOT_OUTSIDE_AGENT"
+            );
+        }
+
         if (!fs.existsSync(this.projectsRoot)) {
+            if (!create) {
+                return null;
+            }
+
+            fs.mkdirSync(this.projectsRoot, { recursive: true });
+        }
+
+        const resolvedRoot = fs.realpathSync(this.projectsRoot);
+
+        if (!isInside(this.agentRoot, resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) {
+            throw workspaceError(
+                "Access denied: the projects directory must be a directory inside the agent directory.",
+                "PROJECTS_ROOT_OUTSIDE_AGENT"
+            );
+        }
+
+        return resolvedRoot;
+    }
+
+    resolveProjectWorkspace(project, projectsRoot = this.resolveProjectsRoot()) {
+        if (!projectsRoot) {
+            throw workspaceError(
+                `Project "${project}" does not exist.`,
+                "PROJECT_NOT_FOUND"
+            );
+        }
+
+        const workspace = path.join(projectsRoot, project);
+
+        if (!fs.existsSync(workspace)) {
+            throw workspaceError(
+                `Project "${project}" does not exist.`,
+                "PROJECT_NOT_FOUND"
+            );
+        }
+
+        const entry = fs.lstatSync(workspace);
+
+        if (!entry.isDirectory() || entry.isSymbolicLink()) {
+            throw workspaceError(
+                "Access denied: project resolves outside the projects directory.",
+                "PROJECT_OUTSIDE_ROOT"
+            );
+        }
+
+        const resolvedWorkspace = fs.realpathSync(workspace);
+
+        if (!isInside(projectsRoot, resolvedWorkspace)) {
+            throw workspaceError(
+                "Access denied: project resolves outside the projects directory.",
+                "PROJECT_OUTSIDE_ROOT"
+            );
+        }
+
+        return resolvedWorkspace;
+    }
+
+    listProjects() {
+        const projectsRoot = this.resolveProjectsRoot();
+
+        if (!projectsRoot) {
             return [];
         }
 
         return fs
-            .readdirSync(this.projectsRoot, { withFileTypes: true })
+            .readdirSync(projectsRoot, { withFileTypes: true })
             .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
             .map((entry) => entry.name)
             .sort();
@@ -64,9 +150,9 @@ export default class WorkspaceManager {
 
     createProject(name) {
         const project = projectSlug(name);
-        fs.mkdirSync(this.projectsRoot, { recursive: true });
+        const projectsRoot = this.resolveProjectsRoot({ create: true });
 
-        const workspace = path.join(this.projectsRoot, project);
+        const workspace = path.join(projectsRoot, project);
 
         if (fs.existsSync(workspace)) {
             throw workspaceError(
@@ -76,6 +162,7 @@ export default class WorkspaceManager {
         }
 
         fs.mkdirSync(workspace);
+        this.resolveProjectWorkspace(project, projectsRoot);
         this.activeProject = project;
 
         return this.describeActiveProject();
@@ -83,23 +170,8 @@ export default class WorkspaceManager {
 
     selectProject(name) {
         const project = projectSlug(name);
-        const workspace = path.join(this.projectsRoot, project);
-
-        if (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory()) {
-            throw workspaceError(
-                `Project "${project}" does not exist.`,
-                "PROJECT_NOT_FOUND"
-            );
-        }
-
-        const resolvedWorkspace = fs.realpathSync(workspace);
-
-        if (!isInside(this.projectsRoot, resolvedWorkspace)) {
-            throw workspaceError(
-                "Access denied: project resolves outside the projects directory.",
-                "PROJECT_OUTSIDE_ROOT"
-            );
-        }
+        const projectsRoot = this.resolveProjectsRoot();
+        this.resolveProjectWorkspace(project, projectsRoot);
 
         this.activeProject = project;
         return this.describeActiveProject();
@@ -113,7 +185,7 @@ export default class WorkspaceManager {
             );
         }
 
-        return path.join(this.projectsRoot, this.activeProject);
+        return this.resolveProjectWorkspace(this.activeProject);
     }
 
     describeActiveProject() {

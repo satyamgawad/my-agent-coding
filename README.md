@@ -61,7 +61,7 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on DeepSeek Flash and moves to Nemotron Ultra or GLM-5.2 only for heavier requests; you can still select one lane explicitly. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on DeepSeek Flash and moves to Nemotron Ultra or GLM-5.2 only for heavier requests; you can still select one lane explicitly. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 

@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createSandbox } from "./sandbox.js";
 
+const MAX_TEXT_FILE_BYTES = 256 * 1024;
+const MAX_DIRECTORY_ENTRIES = 500;
+
 function fileError(message, code) {
     const error = new Error(message);
     error.code = code;
@@ -9,7 +12,7 @@ function fileError(message, code) {
 }
 
 function visibleEntries(directory, sandbox) {
-    return fs
+    const entries = fs
         .readdirSync(directory, { withFileTypes: true })
         .filter((entry) => !entry.isSymbolicLink())
         .filter(
@@ -17,6 +20,30 @@ function visibleEntries(directory, sandbox) {
         )
         .map((entry) => entry.name)
         .sort((left, right) => left.localeCompare(right));
+
+    if (entries.length > MAX_DIRECTORY_ENTRIES) {
+        throw fileError(
+            `This directory has more than ${MAX_DIRECTORY_ENTRIES} visible entries. Inspect a narrower subdirectory instead.`,
+            "DIRECTORY_TOO_LARGE"
+        );
+    }
+
+    return entries;
+}
+
+function requireManageableTextFile(fullPath) {
+    const details = fs.statSync(fullPath);
+
+    if (!details.isFile()) {
+        throw fileError("The requested path must be a regular file.", "INVALID_FILE_TYPE");
+    }
+
+    if (details.size > MAX_TEXT_FILE_BYTES) {
+        throw fileError(
+            `This file is larger than ${MAX_TEXT_FILE_BYTES} bytes. Inspect or edit a smaller source file instead.`,
+            "FILE_TOO_LARGE"
+        );
+    }
 }
 
 export function createFileTools(workspaceManager) {
@@ -32,7 +59,9 @@ export function createFileTools(workspaceManager) {
                 throw fileError("readFile requires a filePath.", "INVALID_ARGUMENT");
             }
 
-            return fs.readFileSync(sandbox.safePath(filePath), "utf8");
+            const fullPath = sandbox.safePath(filePath);
+            requireManageableTextFile(fullPath);
+            return fs.readFileSync(fullPath, "utf8");
         },
 
         writeFile({ filePath, content } = {}) {
@@ -71,6 +100,7 @@ export function createFileTools(workspaceManager) {
             }
 
             const fullPath = sandbox.safePath(filePath);
+            requireManageableTextFile(fullPath);
             const content = fs.readFileSync(fullPath, "utf8");
             const occurrences = content.split(oldText).length - 1;
 

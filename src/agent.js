@@ -8,7 +8,11 @@ const MODIFICATION_TOOLS = new Set(["writeFile", "editFile"]);
 const MAX_CONSECUTIVE_INSPECTIONS = 6;
 const MAX_CONSECUTIVE_FAILED_TESTS = 2;
 const MAX_MODEL_ATTEMPTS = 3;
+const MAX_HISTORY_MESSAGES = 12;
+const MAX_HISTORY_CHARS = 48 * 1024;
+const MAX_TOOL_RESULT_CHARS = 16 * 1024;
 const APPLICATION_TASK = /\b(app|application|website|web\s*site|portfolio|dashboard)\b/i;
+const TASK_CANCELLED_RESULT = "❌ Task cancelled by user. Changes already completed were kept.";
 
 export function normalizeToolResult(tool, result) {
     return { ok: true, tool, result, error: null };
@@ -108,15 +112,97 @@ function isTransientModelError(error) {
     );
 }
 
-function delay(milliseconds) {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function delay(milliseconds, signal) {
+    if (!signal) {
+        return new Promise((resolve) => setTimeout(resolve, milliseconds));
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(finish, milliseconds);
+
+        function cleanup() {
+            clearTimeout(timeout);
+            signal.removeEventListener("abort", abort);
+        }
+
+        function finish() {
+            cleanup();
+            resolve();
+        }
+
+        function abort() {
+            cleanup();
+            reject(signal.reason || new Error("Task cancelled."));
+        }
+
+        if (signal.aborted) {
+            abort();
+            return;
+        }
+
+        signal.addEventListener("abort", abort, { once: true });
+    });
+}
+
+function boundedText(value, maximumLength) {
+    if (value.length <= maximumLength) {
+        return value;
+    }
+
+    const marker = "\n… [truncated for a faster, safer model request] …\n";
+
+    if (maximumLength <= marker.length) {
+        return marker.slice(0, maximumLength);
+    }
+
+    const available = maximumLength - marker.length;
+    const headLength = Math.floor(available * 0.7);
+    const tailLength = available - headLength;
+    return `${value.slice(0, headLength)}${marker}${value.slice(-tailLength)}`;
+}
+
+function resultForPrompt(result) {
+    let serialized;
+
+    try {
+        serialized = JSON.stringify(result);
+    } catch {
+        serialized = JSON.stringify({ ok: false, error: "Tool result could not be serialized." });
+    }
+
+    return boundedText(serialized, MAX_TOOL_RESULT_CHARS);
+}
+
+function recentHistory(history) {
+    const selected = [];
+    let characters = 0;
+
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+        const message = history[index];
+        const content = typeof message.content === "string" ? message.content : "";
+        const remaining = MAX_HISTORY_CHARS - characters;
+
+        if (remaining <= 0) {
+            break;
+        }
+
+        if (content.length > remaining) {
+            selected.unshift({ ...message, content: boundedText(content, remaining) });
+            break;
+        }
+
+        selected.unshift(message);
+        characters += content.length;
+    }
+
+    return selected;
 }
 
 function feedbackPrompt(task, result, instruction = "") {
     return [
         `User task:\n${task}`,
         "Latest tool result:",
-        JSON.stringify(result),
+        resultForPrompt(result),
         instruction,
         "Continue the task. Return exactly one JSON tool call when another action is needed. Return a concise user-facing completion only when the work is complete and verified.",
     ]
@@ -140,14 +226,22 @@ export default class Agent {
         this.onEvent?.({ message, details });
     }
 
-    async generateWithRetry(prompt, history) {
+    async generateWithRetry(prompt, history, signal) {
         let lastError;
 
         for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
+            if (signal?.aborted) {
+                throw signal.reason || new Error("Task cancelled.");
+            }
+
             try {
-                return await this.model.generate(prompt, { history });
+                return await this.model.generate(prompt, { history, signal });
             } catch (error) {
                 lastError = error;
+
+                if (signal?.aborted) {
+                    throw error;
+                }
 
                 if (!isTransientModelError(error) || attempt === MAX_MODEL_ATTEMPTS) {
                     throw error;
@@ -160,14 +254,14 @@ export default class Agent {
                         message: error.message || String(error),
                     },
                 });
-                await delay(attempt * 250);
+                await delay(attempt * 250, signal);
             }
         }
 
         throw lastError;
     }
 
-    async run(task) {
+    async run(task, { signal } = {}) {
         let prompt = task;
         let latestResult = null;
         let pendingVerification = null;
@@ -187,11 +281,23 @@ export default class Agent {
         const verifiedTestFiles = new Set();
 
         for (let step = 0; step < MAX_STEPS; step += 1) {
+            if (signal?.aborted) {
+                return TASK_CANCELLED_RESULT;
+            }
+
             let response;
 
             try {
-                response = await this.generateWithRetry(prompt, history);
+                response = await this.generateWithRetry(
+                    prompt,
+                    recentHistory(history.slice(-MAX_HISTORY_MESSAGES)),
+                    signal
+                );
             } catch (error) {
+                if (signal?.aborted) {
+                    return TASK_CANCELLED_RESULT;
+                }
+
                 return `❌ The model request failed after ${MAX_MODEL_ATTEMPTS} attempts: ${error.message || String(error)}`;
             }
 
@@ -261,6 +367,10 @@ export default class Agent {
             let result;
             let instruction = "";
 
+            if (signal?.aborted) {
+                return TASK_CANCELLED_RESULT;
+            }
+
             if (!tool) {
                 result = normalizeToolError(
                     decision.tool,
@@ -321,7 +431,12 @@ export default class Agent {
                     );
                 } else {
                     try {
-                        const toolResult = await tool.execute(decision.arguments);
+                        const toolResult = await tool.execute(decision.arguments, { signal });
+
+                        if (signal?.aborted) {
+                            return TASK_CANCELLED_RESULT;
+                        }
+
                         const executionError = commandFailure(
                             decision.tool,
                             toolResult
@@ -350,6 +465,10 @@ export default class Agent {
                             result = normalizeToolResult(decision.tool, toolResult);
                         }
                     } catch (error) {
+                        if (signal?.aborted) {
+                            return TASK_CANCELLED_RESULT;
+                        }
+
                         result = normalizeToolError(decision.tool, error);
                     }
                 }

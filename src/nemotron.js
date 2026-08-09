@@ -129,8 +129,8 @@ class Nemotron {
         this.model = model;
     }
 
-    async generate(prompt, { history = [] } = {}) {
-        const client = this.client ?? createClient();
+    async generate(prompt, { history = [], signal } = {}) {
+        const client = this.client ??= createClient();
         const completion = await client.chat.completions.create({
             model: this.model || selectedModel(),
             messages: [
@@ -144,7 +144,7 @@ class Nemotron {
             top_p: 0.9,
             max_tokens: 4096,
             stream: false,
-        });
+        }, { signal });
 
         const message = completion.choices[0]?.message;
 

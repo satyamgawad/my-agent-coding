@@ -302,6 +302,107 @@ test("agent retains tool history across model calls", async (t) => {
     assert.equal(histories[2].history.length, 4);
 });
 
+test("agent bounds tool output and model history without weakening verification", async () => {
+    const prompts = [];
+    const largeContent = `START-${"x".repeat(30_000)}-END`;
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("readFile", { filePath: "large.txt" }),
+            { content: "The file was inspected." },
+        ], prompts),
+        {
+            tools: {
+                readFile: { execute: () => largeContent },
+            },
+        }
+    );
+
+    assert.equal(await agent.run("Inspect the large file."), "The file was inspected.");
+    assert.match(prompts[1], /truncated for a faster, safer model request/);
+    assert.match(prompts[1], /START-/);
+    assert.match(prompts[1], /-END/);
+    assert.ok(prompts[1].length < 18_000);
+
+    const histories = [];
+    const responses = [
+        ...Array.from({ length: 8 }, () => toolCall("listProjects")),
+        { content: "Finished inspecting project metadata." },
+    ];
+    const historyAgent = new Agent(
+        {
+            async generate(_prompt, { history }) {
+                histories.push(structuredClone(history));
+                return responses.shift();
+            },
+        },
+        {
+            tools: {
+                listProjects: { execute: () => ["demo"] },
+            },
+        }
+    );
+
+    assert.equal(
+        await historyAgent.run("Inspect project metadata."),
+        "Finished inspecting project metadata."
+    );
+    assert.ok(histories.every((history) => history.length <= 12));
+    assert.equal(histories.at(-1).length, 12);
+
+    const largeHistories = [];
+    const largeResponses = [
+        ...Array.from({ length: 5 }, () => toolCall("readFile", { filePath: "large.txt" })),
+        { content: "Finished inspecting the bounded history." },
+    ];
+    const largeHistoryAgent = new Agent(
+        {
+            async generate(_prompt, { history }) {
+                largeHistories.push(structuredClone(history));
+                return largeResponses.shift();
+            },
+        },
+        { tools: { readFile: { execute: () => largeContent } } }
+    );
+
+    await largeHistoryAgent.run("Inspect repeated large file output.");
+    assert.ok(
+        largeHistories.every((history) =>
+            history.reduce((total, message) => total + message.content.length, 0) <= 48 * 1024
+        )
+    );
+});
+
+test("agent cancellation stops an in-flight model request without retrying", async () => {
+    const controller = new AbortController();
+    let started;
+    const modelStarted = new Promise((resolve) => {
+        started = resolve;
+    });
+    let calls = 0;
+    const agent = new Agent(
+        {
+            async generate(_prompt, { signal }) {
+                calls += 1;
+                started();
+                return new Promise((resolve, reject) => {
+                    signal.addEventListener("abort", () => reject(new Error("Request aborted.")), { once: true });
+                });
+            },
+        },
+        { tools: { listProjects: { execute: () => [] } } }
+    );
+
+    const run = agent.run("Inspect projects.", { signal: controller.signal });
+    await modelStarted;
+    controller.abort(new Error("Cancelled from the dashboard."));
+
+    assert.equal(
+        await run,
+        "❌ Task cancelled by user. Changes already completed were kept."
+    );
+    assert.equal(calls, 1);
+});
+
 test("agent retries transient model request failures", async (t) => {
     const { workspaceManager, tools } = createTestWorkspace(t);
     let attempts = 0;
