@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+npm-debug.log*
+coverage/
+.env
+.env.*
+!.env.example
+
+# Generated apps and their local data belong on this computer, not in the agent source repository.
+projects/

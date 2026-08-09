@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101315">
+    <title>My Coding Agent</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand" aria-label="My Coding Agent">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span>my coding agent</span>
+        </div>
+        <div class="connection" id="connection" role="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Local session</span>
+        </div>
+      </header>
+
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">AUTONOMOUS LOCAL WORKSPACE</p>
+        <h1 id="page-title">Give it a task.<br><em>Watch it ship.</em></h1>
+        <p class="intro-copy">A focused workspace for creating projects, fixing code, and following every verified step without leaving your browser.</p>
+      </section>
+
+      <section class="workbench" aria-label="Agent workspace">
+        <form class="task-card" id="task-form">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">NEW TASK</p>
+              <h2>What should we make?</h2>
+            </div>
+            <span class="shortcut">⌘ ↵</span>
+          </div>
+
+          <label class="sr-only" for="task-input">Describe a coding task</label>
+          <textarea id="task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site with a dark mode and focused tests." autofocus></textarea>
+
+          <div class="model-control">
+            <div>
+              <label class="muted-label" for="model-mode">MODEL ROUTE</label>
+              <p id="model-note">Auto starts fast for routine work and uses deeper lanes only when the task clearly needs them.</p>
+            </div>
+            <select id="model-mode" name="mode" aria-describedby="model-note">
+              <option value="auto" selected>Auto · all three</option>
+              <option value="flash">Fast · DeepSeek Flash</option>
+              <option value="ultra">Balanced · Nemotron Ultra</option>
+              <option value="glm">Deep work · GLM-5.2</option>
+            </select>
+          </div>
+
+          <div class="suggestions" aria-label="Task suggestions">
+            <button type="button" data-prompt="Create a simple Todo application with add, complete, and delete actions.">Todo app</button>
+            <button type="button" data-prompt="Inspect the active project and explain its structure.">Explain project</button>
+            <button type="button" data-prompt="Run tests and fix any errors.">Fix tests</button>
+          </div>
+
+          <div class="task-footer">
+            <p id="task-hint">The agent verifies each change before it reports success.</p>
+            <button class="run-button" id="run-button" type="submit">
+              <span>Run task</span><span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </form>
+
+        <aside class="workspace-card" aria-labelledby="workspace-title">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">CURRENT CONTEXT</p>
+              <h2 id="workspace-title">Workspace</h2>
+            </div>
+            <span class="project-count" id="project-count">0 projects</span>
+          </div>
+          <div class="active-project" id="active-project">
+            <span class="folder-mark" aria-hidden="true">▣</span>
+            <div>
+              <p class="muted-label">ACTIVE PROJECT</p>
+              <strong>No project selected</strong>
+            </div>
+          </div>
+          <div class="project-list-wrap">
+            <p class="muted-label">AVAILABLE PROJECTS</p>
+            <ul class="project-list" id="project-list">
+              <li class="empty-state">Projects you create will appear here.</li>
+            </ul>
+          </div>
+          <div class="project-runner">
+            <div>
+              <p class="muted-label">PROJECT PREVIEW</p>
+              <p class="runner-status" id="runner-status" aria-live="polite">Select a project to run it locally.</p>
+            </div>
+            <div class="runner-actions">
+              <button id="run-project" type="button" disabled>Run project</button>
+              <a id="open-project" href="#" target="_blank" rel="noopener" hidden>Open ↗</a>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="observatory" aria-label="Agent activity and outcome">
+        <article class="activity-card">
+          <div class="card-heading compact">
+            <div>
+              <p class="eyebrow">LIVE ACTIVITY</p>
+              <h2>Agent trace</h2>
+            </div>
+            <span class="activity-state" id="activity-state">Ready</span>
+          </div>
+          <ol class="activity-list" id="activity-list" aria-live="polite">
+            <li class="activity-item is-idle">
+              <span class="activity-icon" aria-hidden="true">·</span>
+              <div><strong>Waiting for a task</strong><p>Tool activity will appear here.</p></div>
+            </li>
+          </ol>
+        </article>
+
+        <article class="result-card" aria-labelledby="result-title">
+          <div class="card-heading compact">
+            <div>
+              <p class="eyebrow">LATEST OUTCOME</p>
+              <h2 id="result-title">Ready when you are</h2>
+            </div>
+            <span class="result-mark" id="result-mark" aria-hidden="true">✦</span>
+          </div>
+          <p class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</p>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

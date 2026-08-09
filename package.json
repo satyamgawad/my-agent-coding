@@ -1,0 +1,19 @@
+{
+  "name": "my-agent",
+  "version": "1.0.0",
+  "description": "A small, safety-conscious local coding agent powered by NVIDIA Nemotron.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "ui": "node src/ui-server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^7.4.0"
+  }
+}

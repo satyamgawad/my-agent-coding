@@ -1,0 +1,131 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import Nemotron, { createSystemPrompt } from "../src/nemotron.js";
+import { TOOL_DEFINITIONS } from "../src/tools/index.js";
+
+function createClient(response) {
+    const requests = [];
+    return {
+        requests,
+        client: {
+            chat: {
+                completions: {
+                    async create(request) {
+                        requests.push(request);
+                        return response;
+                    },
+                },
+            },
+        },
+    };
+}
+
+test("Nemotron prompt documents exactly the registered tool names and contracts", () => {
+    const prompt = createSystemPrompt();
+    for (const [name, definition] of Object.entries(TOOL_DEFINITIONS)) {
+        assert.match(prompt, new RegExp(`- ${name}\\n`));
+        assert.equal(prompt.includes(JSON.stringify(definition.arguments)), true);
+    }
+    assert.doesNotMatch(prompt, /deleteFile/);
+    assert.match(prompt, /never pass the selected project name as a file-tool directory/);
+});
+
+test("Nemotron sends the current task and normalizes a provider response", async () => {
+    const { client, requests } = createClient({
+        choices: [
+            {
+                message: {
+                    reasoning_content: "Inspect first.",
+                    content: '{"type":"tool_call","tool":"listProjects","arguments":{}}',
+                },
+            },
+        ],
+    });
+    const response = await new Nemotron({ client }).generate("Inspect projects.");
+
+    assert.deepEqual(response, {
+        reasoning: "Inspect first.",
+        content: '{"type":"tool_call","tool":"listProjects","arguments":{}}',
+        tool_calls: [],
+    });
+    assert.equal(requests[0].messages[1].content, "Inspect projects.");
+});
+
+test("Nemotron preserves history and converts native tool calls to the agent contract", async () => {
+    const { client, requests } = createClient({
+        choices: [
+            {
+                message: {
+                    content: null,
+                    tool_calls: [
+                        {
+                            function: {
+                                name: "listProjects",
+                                arguments: "{}",
+                            },
+                        },
+                    ],
+                },
+            },
+        ],
+    });
+    const history = [
+        { role: "user", content: "Create a project." },
+        { role: "assistant", content: "I will create it." },
+    ];
+    const response = await new Nemotron({ client }).generate("List projects.", {
+        history,
+    });
+
+    assert.deepEqual(JSON.parse(response.content), {
+        type: "tool_call",
+        tool: "listProjects",
+        arguments: {},
+    });
+    assert.deepEqual(requests[0].messages.slice(1), [
+        ...history,
+        { role: "user", content: "List projects." },
+    ]);
+    assert.equal(
+        requests[0].tools.some((tool) => tool.function.name === "listProjects"),
+        true
+    );
+});
+
+test("Nemotron prioritizes native tool calls and preserves malformed arguments for recovery", async () => {
+    const { client } = createClient({
+        choices: [
+            {
+                message: {
+                    content: "I will inspect the projects first.",
+                    tool_calls: [
+                        {
+                            function: {
+                                name: "listProjects",
+                                arguments: "{not json}",
+                            },
+                        },
+                    ],
+                },
+            },
+        ],
+    });
+
+    const response = await new Nemotron({ client }).generate("Inspect projects.");
+
+    assert.deepEqual(JSON.parse(response.content), {
+        type: "tool_call",
+        tool: "listProjects",
+        arguments: null,
+    });
+});
+
+test("Nemotron accepts an explicit model override for routed tasks", async () => {
+    const { client, requests } = createClient({
+        choices: [{ message: { content: "Ready." } }],
+    });
+
+    await new Nemotron({ client, model: "z-ai/glm-5.2" }).generate("Plan the task.");
+
+    assert.equal(requests[0].model, "z-ai/glm-5.2");
+});
