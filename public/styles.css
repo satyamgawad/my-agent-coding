@@ -156,6 +156,55 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .runner-actions a { color: var(--canvas); background: var(--aqua); }
 .runner-actions a:focus-visible { outline: 3px solid var(--acid); outline-offset: 2px; }
 
+.project-delivery { margin-top: 15px; padding: 15px 0 0; border-top: 1px solid var(--line); }
+.project-delivery h3 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.03em; }
+.delivery-status { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.delivery-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 13px; }
+.delivery-actions button, .delivery-actions a, .preview-dialog-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-decoration: none;
+}
+.delivery-actions button { border: 1px solid rgba(137, 229, 206, .5); color: var(--aqua); background: rgba(137, 229, 206, .08); }
+.delivery-actions button:hover:not(:disabled), .delivery-actions button:focus-visible { border-color: var(--aqua); background: rgba(137, 229, 206, .16); outline: none; }
+.delivery-actions button:disabled { cursor: not-allowed; opacity: .42; }
+.delivery-actions a { border: 1px solid rgba(216, 252, 106, .5); color: var(--canvas); background: var(--acid); }
+.delivery-actions a:hover:not([aria-disabled="true"]), .delivery-actions a:focus-visible { box-shadow: 0 5px 14px rgba(216, 252, 106, .16); outline: 3px solid rgba(137, 229, 206, .65); outline-offset: 2px; }
+.delivery-actions a[aria-disabled="true"] { cursor: not-allowed; opacity: .42; pointer-events: none; }
+.preview-scope { margin: 11px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
+.preview-scope strong { color: var(--muted); font-weight: 800; }
+
+.preview-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(850px, calc(100vh - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(137, 229, 206, .45);
+  border-radius: 16px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, .58);
+}
+.preview-dialog::backdrop { background: rgba(4, 7, 6, .8); backdrop-filter: blur(4px); }
+.preview-dialog[open] { display: grid; grid-template-rows: auto minmax(320px, 1fr) auto; }
+.preview-dialog-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 19px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(137, 229, 206, .09), transparent 44%); }
+.preview-dialog h2 { margin: 5px 0 0; font-size: 18px; letter-spacing: -.04em; }
+.preview-dialog-actions { display: inline-flex; align-items: center; gap: 8px; }
+.preview-dialog-actions button { border: 1px solid var(--line); color: var(--ink); background: var(--surface-soft); }
+.preview-dialog-actions button:hover, .preview-dialog-actions button:focus-visible { border-color: var(--coral); color: var(--coral); outline: none; }
+.preview-dialog iframe { display: block; width: 100%; min-height: 0; height: min(68vh, 650px); border: 0; background: #fff; }
+.preview-dialog-note { margin: 0; padding: 10px 19px; border-top: 1px solid var(--line); color: var(--muted); background: rgba(0, 0, 0, .12); font-size: 11px; line-height: 1.35; }
+
 .activity-card { min-height: 260px; }
 .activity-state { border-color: rgba(137, 229, 206, .25); color: var(--aqua); }
 .activity-state.is-working { color: var(--acid); border-color: rgba(216, 252, 106, .3); }
@@ -188,6 +237,16 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
   .model-control { align-items: flex-start; flex-direction: column; }
   .model-control select { width: 100%; }
   .project-runner { align-items: flex-start; }
+  .project-runner { flex-wrap: wrap; }
+  .delivery-actions { grid-template-columns: 1fr; }
+  .project-runner .runner-actions { width: 100%; }
+  .runner-actions button, .runner-actions a { flex: 1; }
+  .preview-dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); border-radius: 13px; }
+  .preview-dialog[open] { grid-template-rows: auto minmax(260px, 1fr) auto; }
+  .preview-dialog-bar { align-items: flex-start; padding: 15px; }
+  .preview-dialog-actions { flex: 0 0 auto; }
+  .preview-dialog iframe { height: min(62vh, 560px); }
+  .preview-dialog-note { padding: 9px 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

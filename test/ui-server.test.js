@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 import { createUiServer, startUiServer } from "../src/ui-server.js";
 
 async function startServer(server) {
@@ -143,6 +144,80 @@ test("a protected dashboard requires its configured Basic Auth password", async 
     });
     assert.equal(authenticated.status, 200);
     assert.match(await authenticated.text(), /Give it a task/);
+});
+
+test("authenticated static previews and source downloads stay sandboxed and within the active project", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-outside-"));
+    const password = "a-long-local-dashboard-password";
+    const project = path.join(root, "projects", "tic-tac-toe");
+    fs.mkdirSync(path.join(project, "public"), { recursive: true });
+    fs.writeFileSync(path.join(project, "public", "index.html"), "<main>Tic Tac Toe</main>");
+    fs.writeFileSync(path.join(project, "public", "app.js"), "console.log('game ready');");
+    fs.writeFileSync(path.join(project, ".env"), "NVIDIA_API_KEY=secret");
+    fs.writeFileSync(path.join(outside, "secret.js"), "outside secret");
+    fs.symlinkSync(path.join(outside, "secret.js"), path.join(project, "public", "linked.js"));
+    const server = createUiServer({ agentRoot: root, accessPassword: password });
+    const baseUrl = await startServer(server);
+    const authorization = basicAuthorization("agent", password);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(outside, { recursive: true, force: true });
+    });
+
+    const anonymous = await fetch(`${baseUrl}/api/projects/preview/`);
+    assert.equal(anonymous.status, 401);
+
+    const selected = await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { authorization, "content-type": "application/json" },
+        body: JSON.stringify({ name: "tic-tac-toe" }),
+    });
+    assert.equal(selected.status, 200);
+
+    const status = await fetch(`${baseUrl}/api/projects/preview`, { headers: { authorization } });
+    assert.deepEqual(await status.json(), {
+        state: "ready",
+        available: true,
+        project: "tic-tac-toe",
+        url: "/api/projects/preview/",
+        downloadUrl: "/api/projects/download",
+        message: null,
+    });
+
+    const preview = await fetch(`${baseUrl}/api/projects/preview/`, { headers: { authorization } });
+    assert.equal(preview.status, 200);
+    assert.match(await preview.text(), /Tic Tac Toe/);
+    assert.equal(preview.headers.get("x-frame-options"), null);
+    const csp = preview.headers.get("content-security-policy");
+    for (const directive of [
+        "sandbox allow-scripts",
+        "connect-src 'none'",
+        "form-action 'none'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'self'",
+    ]) {
+        assert.ok(csp.includes(directive));
+    }
+
+    for (const forbiddenPath of [".env", "linked.js", "%2e%2e%2f.env", "%2e%2e%5c.env"]) {
+        const response = await fetch(`${baseUrl}/api/projects/preview/${forbiddenPath}`, {
+            headers: { authorization },
+        });
+        assert.equal(response.status, 404);
+        assert.doesNotMatch(await response.text(), /secret/i);
+    }
+
+    const download = await fetch(`${baseUrl}/api/projects/download`, { headers: { authorization } });
+    assert.equal(download.status, 200);
+    assert.match(download.headers.get("content-type"), /application\/gzip/);
+    assert.match(download.headers.get("content-disposition"), /tic-tac-toe-source\.tar\.gz/);
+    const source = gunzipSync(Buffer.from(await download.arrayBuffer())).toString("utf8");
+    assert.match(source, /Tic Tac Toe/);
+    assert.doesNotMatch(source, /NVIDIA_API_KEY|outside secret/);
 });
 
 test("the authenticated active-task status supports dashboard recovery without exposing task data", async (t) => {
@@ -333,6 +408,18 @@ test("the dashboard restores an active task after a reload or a 409 task collisi
     assert.match(script, /Recovered active task/);
     assert.match(script, /response\.status === 409/);
     assert.match(script, /startActiveTaskPolling/);
+});
+
+test("the dashboard embeds generated static previews in a restricted iframe", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+    const iframe = page.match(/<iframe[\s\S]*?<\/iframe>/)?.[0] || "";
+
+    assert.match(iframe, /sandbox="allow-scripts"/);
+    assert.match(iframe, /referrerpolicy="no-referrer"/);
+    assert.doesNotMatch(iframe, /allow-same-origin|allow-forms|allow-popups|allow-top-navigation|allow-downloads/);
+    assert.match(script, /\/api\/projects\/preview/);
+    assert.match(script, /\/api\/projects\/download/);
 });
 
 test("the local UI cancels only the active task and returns a final cancellation event", async (t) => {

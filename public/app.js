@@ -13,6 +13,12 @@ const projectList = document.querySelector("#project-list");
 const runProjectButton = document.querySelector("#run-project");
 const openProject = document.querySelector("#open-project");
 const runnerStatus = document.querySelector("#runner-status");
+const previewProjectButton = document.querySelector("#preview-project");
+const downloadProject = document.querySelector("#download-project");
+const deliveryStatus = document.querySelector("#delivery-status");
+const previewDialog = document.querySelector("#preview-dialog");
+const previewFrame = document.querySelector("#project-preview-frame");
+const closePreviewButton = document.querySelector("#close-preview");
 const activityList = document.querySelector("#activity-list");
 const activityState = document.querySelector("#activity-state");
 const resultCard = document.querySelector(".result-card");
@@ -42,12 +48,23 @@ const modelNotes = {
 
 let workspaceContext = { project: null };
 let projectStatus = { state: "idle", project: null, url: null };
+let staticPreviewStatus = {
+  state: "idle",
+  project: null,
+  url: "/api/projects/preview/",
+  available: false,
+  message: "Select a project to preview its static website or download a safe source archive.",
+};
 let activeTaskId = null;
 let taskStatusKnown = false;
 let recoveringActiveTask = false;
 let activeTaskPoll = null;
+let staticPreviewRequest = 0;
 
 const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
+const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/preview/status"];
+const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
+const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
 
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
@@ -251,6 +268,211 @@ function renderProjectRunner() {
   openProject.hidden = true;
 }
 
+function safeStaticPreviewUrl(candidate) {
+  const fallback = new URL(STATIC_PREVIEW_ROOT, window.location.origin);
+
+  if (typeof candidate !== "string" || !candidate.trim()) {
+    return fallback.pathname;
+  }
+
+  try {
+    const parsed = new URL(candidate, window.location.origin);
+    const isStaticPreview = parsed.pathname === STATIC_PREVIEW_ROOT
+      || parsed.pathname.startsWith(STATIC_PREVIEW_ROOT);
+
+    if (parsed.origin !== window.location.origin || !isStaticPreview) {
+      return fallback.pathname;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback.pathname;
+  }
+}
+
+function safeProjectDownloadUrl(candidate) {
+  if (typeof candidate !== "string" || !candidate.trim()) return null;
+
+  try {
+    const parsed = new URL(candidate, window.location.origin);
+
+    if (parsed.origin !== window.location.origin || parsed.pathname !== PROJECT_DOWNLOAD_PATH) {
+      return null;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function downloadUrlFromPreviewPayload(payload) {
+  if (payload && Object.hasOwn(payload, "downloadUrl")) {
+    return safeProjectDownloadUrl(payload.downloadUrl);
+  }
+
+  // Older dashboard servers did not include downloadUrl in preview metadata.
+  // Keep the button compatible with that contract without trusting arbitrary URLs.
+  return PROJECT_DOWNLOAD_PATH;
+}
+
+function renderStaticPreview() {
+  const hasProject = Boolean(workspaceContext.project);
+  const previewMatchesActiveProject = !staticPreviewStatus.project
+    || staticPreviewStatus.project === workspaceContext.project;
+  const canPreview = hasProject && previewMatchesActiveProject && staticPreviewStatus.available;
+  const safeDownloadUrl = safeProjectDownloadUrl(staticPreviewStatus.downloadUrl);
+  const canDownload = hasProject && Boolean(safeDownloadUrl);
+
+  previewProjectButton.disabled = !canPreview;
+  previewProjectButton.textContent = canPreview ? "Preview here" : "Preview unavailable";
+
+  const downloadUrl = canDownload ? safeDownloadUrl : "#";
+  downloadProject.href = downloadUrl;
+  downloadProject.setAttribute("aria-disabled", String(!canDownload));
+  downloadProject.tabIndex = canDownload ? 0 : -1;
+
+  if (!hasProject) {
+    deliveryStatus.textContent = "Select a project to preview its static website or download a safe source archive.";
+    return;
+  }
+
+  if (canPreview) {
+    deliveryStatus.textContent = `${workspaceContext.project} is ready for an isolated web preview. You can also download its safe source archive.`;
+    return;
+  }
+
+  deliveryStatus.textContent = staticPreviewStatus.message
+    || "This project has no safe static entry page to preview here. Its safe source archive is still available to download.";
+}
+
+function normalizeStaticPreviewStatus(payload, responseStatus) {
+  const reportedState = typeof payload?.state === "string"
+    ? payload.state
+    : typeof payload?.status === "string"
+      ? payload.status
+      : null;
+  const state = reportedState || (payload?.available === true || payload?.ready === true ? "ready" : "unavailable");
+  const explicitlyUnavailable = state === "unavailable"
+    || payload?.available === false
+    || payload?.ready === false;
+  const available = !explicitlyUnavailable && (
+    payload?.available === true
+    || payload?.ready === true
+    || state === "ready"
+    || state === "available"
+    || state === "previewable"
+  );
+
+  return {
+    state,
+    project: typeof payload?.project === "string" ? payload.project : workspaceContext.project,
+    url: safeStaticPreviewUrl(payload?.url || payload?.previewUrl),
+    downloadUrl: downloadUrlFromPreviewPayload(payload),
+    available: responseStatus >= 200 && responseStatus < 300 && available,
+    message: typeof payload?.message === "string" ? payload.message : null,
+  };
+}
+
+async function fetchStaticPreviewStatus() {
+  let lastError = null;
+
+  for (const path of STATIC_PREVIEW_STATUS_PATHS) {
+    try {
+      const response = await fetch(path, { headers: { accept: "application/json" } });
+      const isJson = response.headers.get("content-type")?.includes("application/json");
+      const body = isJson ? await response.json().catch(() => ({})) : {};
+
+      if (response.status === 404) {
+        lastError = new Error(body.error || "Static preview status is unavailable.");
+        continue;
+      }
+
+      // Some older servers can treat /preview as a static path instead of
+      // metadata. If so, try the earlier /preview/status contract next.
+      if (response.ok && !isJson) {
+        lastError = new Error("Static preview status is unavailable.");
+        continue;
+      }
+
+      if (!response.ok) {
+        return normalizeStaticPreviewStatus({
+          state: "unavailable",
+          project: workspaceContext.project,
+          message: body.error || "A static preview is not available for this project.",
+          downloadUrl: downloadUrlFromPreviewPayload(body),
+        }, response.status);
+      }
+
+      return normalizeStaticPreviewStatus(body, response.status);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Static preview status is unavailable.");
+}
+
+async function refreshStaticPreviewStatus() {
+  const requestId = ++staticPreviewRequest;
+
+  if (!workspaceContext.project) {
+    staticPreviewStatus = {
+      state: "idle",
+      project: null,
+      url: STATIC_PREVIEW_ROOT,
+      downloadUrl: null,
+      available: false,
+      message: "Select a project to preview its static website or download a safe source archive.",
+    };
+    renderStaticPreview();
+    return;
+  }
+
+  try {
+    const status = await fetchStaticPreviewStatus();
+    if (requestId !== staticPreviewRequest) return;
+    staticPreviewStatus = status;
+  } catch {
+    if (requestId !== staticPreviewRequest) return;
+    staticPreviewStatus = {
+      state: "unavailable",
+      project: workspaceContext.project,
+      url: STATIC_PREVIEW_ROOT,
+      downloadUrl: PROJECT_DOWNLOAD_PATH,
+      available: false,
+      message: "Static preview status is temporarily unavailable. You can still download the safe source archive.",
+    };
+  }
+
+  renderStaticPreview();
+}
+
+function closeStaticPreview() {
+  previewFrame.src = "about:blank";
+
+  if (typeof previewDialog.close === "function" && previewDialog.open) {
+    previewDialog.close();
+    return;
+  }
+
+  previewDialog.removeAttribute("open");
+}
+
+function openStaticPreviewDialog() {
+  if (previewProjectButton.disabled) return;
+
+  const previewUrl = safeStaticPreviewUrl(staticPreviewStatus.url);
+  previewFrame.src = previewUrl;
+
+  if (typeof previewDialog.showModal === "function") {
+    previewDialog.showModal();
+    return;
+  }
+
+  previewDialog.setAttribute("open", "");
+}
+
 async function refreshProjectStatus() {
   const response = await fetch("/api/projects/run", { headers: { accept: "application/json" } });
   if (!response.ok) throw new Error("Project preview is unavailable.");
@@ -323,7 +545,10 @@ async function refreshContext() {
       }
     }
 
-    await refreshProjectStatus();
+    await Promise.all([
+      refreshProjectStatus(),
+      refreshStaticPreviewStatus(),
+    ]);
   } catch {
     setConnection("Workspace offline", true);
   }
@@ -340,6 +565,7 @@ async function selectProject(name) {
     if (!response.ok) throw new Error(body.error || "The project could not be selected.");
 
     workspaceContext = body;
+    closeStaticPreview();
     await refreshContext();
     addActivity(`Selected ${name}`, "It is ready to run or receive a new task.");
   } catch (error) {
@@ -550,6 +776,19 @@ modelMode.addEventListener("change", () => {
 });
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
+previewProjectButton.addEventListener("click", openStaticPreviewDialog);
+closePreviewButton.addEventListener("click", closeStaticPreview);
+downloadProject.addEventListener("click", (event) => {
+  if (downloadProject.getAttribute("aria-disabled") === "true") {
+    event.preventDefault();
+  }
+});
+previewDialog.addEventListener("close", () => {
+  previewFrame.src = "about:blank";
+});
+previewDialog.addEventListener("click", (event) => {
+  if (event.target === previewDialog) closeStaticPreview();
+});
 cancelButton.addEventListener("click", cancelTask);
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {

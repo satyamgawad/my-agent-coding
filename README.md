@@ -70,6 +70,19 @@ Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 
+### Static web preview and source download
+
+When the active project contains `public/index.html` or `index.html`, the
+dashboard also offers **Preview here** and **Download source**. The preview is
+an isolated static HTML/CSS/browser-JavaScript view: it does not run a generated
+Node server, share the dashboard origin, access agent APIs, or receive secrets.
+It is protected by the same dashboard password. Projects that need a backend,
+database, or environment variables should be deployed as their own service.
+
+**Download source** creates a bounded `.tar.gz` source archive. It omits
+dependencies, Git data, environment files, symlinks, and common credential/key
+files. Do not hard-code credentials in ordinary source files.
+
 The dashboard also checks whether its configured model routes are currently
 available. A status-check problem does not expose your key or prevent a task
 from using its normal retry and fallback behavior.

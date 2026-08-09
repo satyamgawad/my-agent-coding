@@ -7,6 +7,7 @@ import Agent from "./agent.js";
 import ModelHealth from "./model-health.js";
 import ModelRouter, { MODEL_MODES } from "./model-router.js";
 import Nemotron, { listNvidiaModels } from "./nemotron.js";
+import ProjectArtifacts from "./project-artifacts.js";
 import ProjectRunner from "./project-runner.js";
 import WorkspaceManager from "./workspace.js";
 
@@ -28,6 +29,19 @@ function securityHeaders() {
     };
 }
 
+function previewSecurityHeaders() {
+    // The generated project's code is allowed to run only in a unique-origin
+    // sandbox. This header applies even when someone opens the preview URL in
+    // a separate tab, rather than only when the dashboard embeds it.
+    // Deliberately omit X-Frame-Options: DENY here so the private dashboard
+    // can show the sandboxed preview in its same-origin iframe.
+    return {
+        "content-security-policy": "sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'self'",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+    };
+}
+
 function responseJson(response, status, body) {
     response.writeHead(status, {
         "content-type": "application/json; charset=utf-8",
@@ -35,6 +49,13 @@ function responseJson(response, status, body) {
         ...securityHeaders(),
     });
     response.end(JSON.stringify(body));
+}
+
+function responseProjectArtifactError(response, error) {
+    responseJson(response, error?.status || 500, {
+        error: error?.message || "The project artifact is unavailable.",
+        code: error?.code || "PROJECT_ARTIFACT_FAILED",
+    });
 }
 
 function responseEvent(response, name, body) {
@@ -203,6 +224,7 @@ export function createUiServer({
     allowProjectPreviews = true,
 } = {}) {
     const workspaceManager = new WorkspaceManager({ agentRoot });
+    const projectArtifacts = new ProjectArtifacts(workspaceManager);
     const projectRunner = new ProjectRunner(workspaceManager);
     const unavailableProfiles = new Map();
     let activeTask = null;
@@ -251,6 +273,52 @@ export function createUiServer({
 
         if (request.method === "GET" && url.pathname === "/api/context") {
             responseJson(response, 200, workspaceManager.getContext());
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/projects/preview") {
+            try {
+                responseJson(response, 200, projectArtifacts.previewStatus());
+            } catch (error) {
+                responseProjectArtifactError(response, error);
+            }
+            return;
+        }
+
+        if (
+            request.method === "GET" &&
+            url.pathname.startsWith("/api/projects/preview/")
+        ) {
+            try {
+                const encodedPath = url.pathname.slice("/api/projects/preview/".length);
+                const preview = projectArtifacts.readPreviewFile(encodedPath);
+                response.writeHead(200, {
+                    "content-type": preview.contentType,
+                    "content-length": preview.contents.length,
+                    "cache-control": "no-store",
+                    ...previewSecurityHeaders(),
+                });
+                response.end(preview.contents);
+            } catch (error) {
+                responseProjectArtifactError(response, error);
+            }
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/projects/download") {
+            try {
+                const archive = projectArtifacts.createSourceArchive();
+                response.writeHead(200, {
+                    "content-type": "application/gzip",
+                    "content-length": archive.contents.length,
+                    "content-disposition": `attachment; filename="${archive.filename}"`,
+                    "cache-control": "no-store",
+                    ...securityHeaders(),
+                });
+                response.end(archive.contents);
+            } catch (error) {
+                responseProjectArtifactError(response, error);
+            }
             return;
         }
 
