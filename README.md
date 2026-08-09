@@ -15,7 +15,7 @@ my-agent/
 
 ## Install and configure
 
-Use Node.js 20 or later.
+Use Node.js 22 or later.
 
 ```bash
 npm install

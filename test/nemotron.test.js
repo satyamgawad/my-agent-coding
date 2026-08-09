@@ -160,7 +160,7 @@ test("Nemotron lists hosted model IDs without sending a generation request", asy
                     calls += 1;
                     return {
                         data: [
-                            { id: "deepseek-ai/deepseek-v4-flash-0731" },
+                            { id: "deepseek-ai/deepseek-v4-flash" },
                             { id: "nvidia/nemotron-3-ultra-550b-a55b" },
                             { id: null },
                         ],
@@ -172,7 +172,7 @@ test("Nemotron lists hosted model IDs without sending a generation request", asy
 
     assert.equal(calls, 1);
     assert.deepEqual(models, [
-        "deepseek-ai/deepseek-v4-flash-0731",
+        "deepseek-ai/deepseek-v4-flash",
         "nvidia/nemotron-3-ultra-550b-a55b",
     ]);
 });

@@ -2,7 +2,7 @@ import Nemotron from "./nemotron.js";
 
 export const MODEL_PROFILES = Object.freeze({
     flash: Object.freeze({
-        id: "deepseek-ai/deepseek-v4-flash-0731",
+        id: "deepseek-ai/deepseek-v4-flash",
         label: "DeepSeek V4 Flash",
         summary: "Fast lane",
     }),

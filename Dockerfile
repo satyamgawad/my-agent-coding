@@ -2,7 +2,7 @@
 
 # The UI is a Node service. Keep the image small and run it as an unprivileged
 # user so generated-project activity cannot run as root in the container.
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

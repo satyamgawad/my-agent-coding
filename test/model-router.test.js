@@ -6,6 +6,10 @@ function responseFor(profile) {
     return { content: `Response from ${profile.label}.` };
 }
 
+test("Flash routing uses the current NVIDIA hosted DeepSeek model ID", () => {
+    assert.equal(MODEL_PROFILES.flash.id, "deepseek-ai/deepseek-v4-flash");
+});
+
 test("automatic routing selects a lane from the task and keeps it for the task", async () => {
     const used = [];
     const router = new ModelRouter({
