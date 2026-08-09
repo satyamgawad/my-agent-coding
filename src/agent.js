@@ -295,6 +295,7 @@ export default class Agent {
         const completed = [];
         const history = [];
         const applicationWorkflow = APPLICATION_TASK.test(task);
+        const newProjectTask = NEW_PROJECT_TASK.test(task);
         let projectCreated = false;
         let packageVerified = false;
         let buildRequired = false;
@@ -346,6 +347,15 @@ export default class Agent {
             if (!decision || decision.type !== "tool_call") {
                 if (pendingVerification) {
                     return `❌ ${pendingVerification} was modified, but verification did not complete. The agent must call readFile for that file before reporting success.`;
+                }
+
+                if (newProjectTask && !projectCreated) {
+                    prompt = feedbackPrompt(
+                        task,
+                        latestResult,
+                        "This request is for a new application. Call createProject with a concise project name before reporting completion; do not only describe the work."
+                    );
+                    continue;
                 }
 
                 if (applicationWorkflow && projectCreated) {

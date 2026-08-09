@@ -504,13 +504,29 @@ test("agent does not retrieve an old project when the task creates a new applica
     workspaceManager.createProject("Old Project");
     fs.writeFileSync(path.join(root, "projects", "old-project", "app.js"), "export const oldFeature = true;\n");
     const prompts = [];
+    const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
     const agent = new Agent(
-        scriptedModel([{ content: "I can create the new application." }], prompts),
+        scriptedModel([
+            { content: "I can create the new application." },
+            toolCall("createProject", { name: "New Portfolio" }),
+            toolCall("writeFile", { filePath: "package.json", content: packageJson }),
+            toolCall("readFile", { filePath: "package.json" }),
+            toolCall("writeFile", { filePath: "app.js", content: "export const name = 'Portfolio';\n" }),
+            toolCall("readFile", { filePath: "app.js" }),
+            toolCall("writeFile", {
+                filePath: "app.test.js",
+                content: 'import assert from "node:assert/strict"; import test from "node:test"; test("has a name", () => assert.equal("Portfolio", "Portfolio"));\n',
+            }),
+            toolCall("readFile", { filePath: "app.test.js" }),
+            toolCall("test"),
+            { content: "Created and verified the new portfolio application." },
+        ], prompts),
         { workspaceManager, tools }
     );
 
-    assert.match(await agent.run("Create a new portfolio application."), /new application/);
+    assert.match(await agent.run("Create a new portfolio application."), /Created and verified/);
     assert.doesNotMatch(prompts[0], /Relevant project context|oldFeature/);
+    assert.match(prompts[1], /Call createProject/);
 });
 
 test("application tasks cannot finish before verified source, tests, and a passing test run", async (t) => {
