@@ -5,6 +5,7 @@ const cancelButton = document.querySelector("#cancel-button");
 const taskHint = document.querySelector("#task-hint");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
+const modelHealth = document.querySelector("#model-health");
 const connection = document.querySelector("#connection");
 const activeProject = document.querySelector("#active-project strong");
 const projectCount = document.querySelector("#project-count");
@@ -110,6 +111,15 @@ function showRequestError(message) {
 }
 
 function renderProjectRunner() {
+  if (projectStatus.state === "unavailable") {
+    runProjectButton.disabled = true;
+    runProjectButton.textContent = "Local only";
+    runProjectButton.removeAttribute("aria-busy");
+    runnerStatus.textContent = projectStatus.message || "Project previews are available only in the local dashboard.";
+    openProject.hidden = true;
+    return;
+  }
+
   const hasProject = Boolean(workspaceContext.project);
   const runningActiveProject = projectStatus.state === "running" && projectStatus.project === workspaceContext.project;
   const runningAnotherProject = projectStatus.state === "running" && !runningActiveProject;
@@ -147,6 +157,42 @@ async function refreshProjectStatus() {
   if (!response.ok) throw new Error("Project preview is unavailable.");
   projectStatus = await response.json();
   renderProjectRunner();
+}
+
+function renderModelHealth(health) {
+  if (health.status === "unknown") {
+    modelHealth.textContent = "Model status is temporarily unavailable. Tasks can still use automatic fallback.";
+    modelHealth.className = "model-health is-unknown";
+    return;
+  }
+
+  const unavailable = (health.models || []).filter((profile) => profile.available === false);
+  if (health.status === "unavailable") {
+    modelHealth.textContent = "None of the configured model routes are available right now. The agent will retry when one returns.";
+    modelHealth.className = "model-health is-degraded";
+    return;
+  }
+
+  if (unavailable.length === 0) {
+    modelHealth.textContent = "All three model routes are available.";
+    modelHealth.className = "model-health is-ready";
+    return;
+  }
+
+  const labels = unavailable.map((profile) => profile.label).join(", ");
+  modelHealth.textContent = `Fallback ready · unavailable: ${labels}.`;
+  modelHealth.className = "model-health is-degraded";
+}
+
+async function refreshModelHealth() {
+  try {
+    const response = await fetch("/api/models/health", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Model health is unavailable.");
+    renderModelHealth(await response.json());
+  } catch {
+    modelHealth.textContent = "Model status is temporarily unavailable. Tasks can still use automatic fallback.";
+    modelHealth.className = "model-health is-unknown";
+  }
 }
 
 async function refreshContext() {
@@ -384,3 +430,4 @@ for (const suggestion of document.querySelectorAll("[data-prompt]")) {
 }
 
 refreshContext();
+refreshModelHealth();

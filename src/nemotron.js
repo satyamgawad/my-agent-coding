@@ -79,6 +79,21 @@ function createClient() {
     });
 }
 
+/**
+ * Return the model IDs currently advertised by NVIDIA's hosted API.
+ *
+ * Keeping this separate from generation lets the dashboard report route health
+ * without sending a prompt or exposing any provider error details to the UI.
+ */
+export async function listNvidiaModels({ client } = {}) {
+    const resolvedClient = client ?? createClient();
+    const page = await resolvedClient.models.list();
+
+    return (page?.data || [])
+        .map((model) => model?.id)
+        .filter((id) => typeof id === "string" && id.length > 0);
+}
+
 function selectedModel() {
     return process.env.NVIDIA_MODEL || DEFAULT_MODEL;
 }

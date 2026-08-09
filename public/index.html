@@ -43,8 +43,9 @@
             <div>
               <label class="muted-label" for="model-mode">MODEL ROUTE</label>
               <p id="model-note">Auto starts fast for routine work and uses deeper lanes only when the task clearly needs them.</p>
+              <p class="model-health" id="model-health" role="status">Checking model availability…</p>
             </div>
-            <select id="model-mode" name="mode" aria-describedby="model-note">
+            <select id="model-mode" name="mode" aria-describedby="model-note model-health">
               <option value="auto" selected>Auto · all three</option>
               <option value="flash">Fast · DeepSeek Flash</option>
               <option value="ultra">Balanced · Nemotron Ultra</option>

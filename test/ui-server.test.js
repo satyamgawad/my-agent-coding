@@ -3,12 +3,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createUiServer } from "../src/ui-server.js";
+import { createUiServer, startUiServer } from "../src/ui-server.js";
 
 async function startServer(server) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address();
     return `http://127.0.0.1:${port}`;
+}
+
+function basicAuthorization(username, password) {
+    return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
 test("the local UI serves its workspace context and streams agent outcomes", async (t) => {
@@ -33,6 +37,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.match(await page.text(), /Give it a task/);
     assert.match(await (await fetch(baseUrl)).text(), /Run project/);
     assert.match(page.headers.get("content-security-policy"), /default-src 'self'/);
+    assert.equal(page.headers.get("x-frame-options"), "DENY");
 
     const context = await fetch(`${baseUrl}/api/context`);
     assert.deepEqual(await context.json(), {
@@ -73,6 +78,100 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.match(stream, /DeepSeek V4 Flash/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
+});
+
+test("the dashboard reports cached model route availability without exposing provider failures", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const modelHealth = {
+        async check() {
+            return {
+                status: "degraded",
+                checkedAt: "2026-08-09T12:00:00.000Z",
+                cached: true,
+                models: [
+                    { mode: "flash", id: "flash", label: "Flash", summary: "Fast lane", available: false },
+                    { mode: "ultra", id: "ultra", label: "Ultra", summary: "Balanced lane", available: true },
+                ],
+            };
+        },
+    };
+    const server = createUiServer({ agentRoot: root, modelHealth });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const response = await fetch(`${baseUrl}/api/models/health`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), await modelHealth.check());
+});
+
+test("a protected dashboard requires its configured Basic Auth password", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const password = "a-long-local-dashboard-password";
+    const server = createUiServer({ agentRoot: root, accessPassword: password });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const anonymous = await fetch(baseUrl);
+    assert.equal(anonymous.status, 401);
+    assert.match(anonymous.headers.get("www-authenticate"), /Basic realm="My Coding Agent"/);
+
+    const wrongPassword = await fetch(baseUrl, {
+        headers: { authorization: basicAuthorization("agent", "wrong-password") },
+    });
+    assert.equal(wrongPassword.status, 401);
+
+    const authenticated = await fetch(baseUrl, {
+        headers: { authorization: basicAuthorization("agent", password) },
+    });
+    assert.equal(authenticated.status, 200);
+    assert.match(await authenticated.text(), /Give it a task/);
+});
+
+test("remote dashboard mode keeps project previews local-only", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({ agentRoot: root, allowProjectPreviews: false });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const status = await fetch(`${baseUrl}/api/projects/run`);
+    assert.deepEqual(await status.json(), {
+        state: "unavailable",
+        project: null,
+        url: null,
+        message: "Project previews are available only in the local dashboard.",
+    });
+
+    const start = await fetch(`${baseUrl}/api/projects/run`, { method: "POST" });
+    assert.equal(start.status, 403);
+    assert.deepEqual(await start.json(), {
+        error: "Project previews are available only in the local dashboard.",
+        code: "PROJECT_PREVIEW_LOCAL_ONLY",
+    });
+});
+
+test("remote dashboard startup refuses a missing or weak password", () => {
+    assert.throws(
+        () => startUiServer({ port: 3333, host: "0.0.0.0" }),
+        /AGENT_UI_PASSWORD must be at least 16 characters/
+    );
+    assert.throws(
+        () => startUiServer({ port: 3333, host: "0.0.0.0", accessPassword: "too-short" }),
+        /AGENT_UI_PASSWORD must be at least 16 characters/
+    );
 });
 
 test("the local UI rejects blank tasks without invoking the agent", async (t) => {

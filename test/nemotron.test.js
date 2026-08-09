@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import Nemotron, { createSystemPrompt } from "../src/nemotron.js";
+import Nemotron, { createSystemPrompt, listNvidiaModels } from "../src/nemotron.js";
 import { TOOL_DEFINITIONS } from "../src/tools/index.js";
 
 function createClient(response) {
@@ -149,4 +149,30 @@ test("Nemotron forwards a cancellation signal to the provider request", async ()
     });
 
     assert.equal(calls[0].options.signal, controller.signal);
+});
+
+test("Nemotron lists hosted model IDs without sending a generation request", async () => {
+    let calls = 0;
+    const models = await listNvidiaModels({
+        client: {
+            models: {
+                async list() {
+                    calls += 1;
+                    return {
+                        data: [
+                            { id: "deepseek-ai/deepseek-v4-flash-0731" },
+                            { id: "nvidia/nemotron-3-ultra-550b-a55b" },
+                            { id: null },
+                        ],
+                    };
+                },
+            },
+        },
+    });
+
+    assert.equal(calls, 1);
+    assert.deepEqual(models, [
+        "deepseek-ai/deepseek-v4-flash-0731",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+    ]);
 });

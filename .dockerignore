@@ -1,0 +1,14 @@
+# Never place local credentials or generated applications in an image build.
+.git
+.gitignore
+.agents
+.codex
+.env
+.env.*
+!.env.example
+.npmrc
+node_modules
+projects
+coverage
+.DS_Store
+npm-debug.log*

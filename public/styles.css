@@ -101,6 +101,9 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .model-control { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 3px 0 17px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .model-control .muted-label { display: block; margin-bottom: 4px; }
 .model-control p { max-width: 330px; margin: 0; color: #858d83; font-size: 11px; line-height: 1.4; }
+.model-control .model-health { margin-top: 5px; color: var(--aqua); font-size: 10px; font-weight: 700; }
+.model-control .model-health.is-degraded { color: var(--coral); }
+.model-control .model-health.is-unknown { color: #b7bdac; }
 .model-control select { min-width: 172px; border: 1px solid rgba(216, 252, 106, .38); border-radius: 9px; padding: 9px 29px 9px 10px; color: var(--ink); background: var(--surface-soft); font-size: 12px; font-weight: 700; outline: none; }
 .model-control select:focus-visible { border-color: var(--aqua); box-shadow: 0 0 0 3px rgba(137, 229, 206, .13); }
 .model-control select:disabled { cursor: wait; opacity: .55; }
