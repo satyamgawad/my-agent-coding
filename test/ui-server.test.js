@@ -15,6 +15,10 @@ function basicAuthorization(username, password) {
     return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
+function toolCall(tool, argumentsValue = {}) {
+    return JSON.stringify({ type: "tool_call", tool, arguments: argumentsValue });
+}
+
 test("the local UI serves its workspace context and streams agent outcomes", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const server = createUiServer({
@@ -194,6 +198,45 @@ test("the local UI rejects blank tasks without invoking the agent", async (t) =>
     assert.deepEqual(await response.json(), {
         error: "Describe a task before running it.",
     });
+});
+
+test("a missing project file is returned as a normal task result instead of dropping the stream", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    fs.mkdirSync(path.join(root, "projects", "notepad-app"), { recursive: true });
+    const responses = [
+        { content: toolCall("selectProject", { name: "notepad-app" }) },
+        { content: toolCall("readFile", { filePath: "public/app.js" }) },
+        { content: "The requested file is missing." },
+    ];
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({ async generate() { return responses.shift(); } }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Inspect the notepad client." }),
+    });
+    const stream = await task.text();
+
+    assert.equal(task.status, 200);
+    assert.match(stream, /FILE_NOT_FOUND/);
+    assert.match(stream, /event: result/);
+    assert.match(stream, /last tool action \(readFile\) failed/);
+});
+
+test("the dashboard code labels a dropped started stream as a connection interruption", () => {
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(script, /Task connection interrupted/);
+    assert.match(script, /task stream ended before the agent returned a result/i);
 });
 
 test("the local UI cancels only the active task and returns a final cancellation event", async (t) => {

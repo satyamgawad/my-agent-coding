@@ -70,6 +70,13 @@ test("file tools list, read, write, edit, and produce a protected project tree",
             }),
         /oldText was not found/
     );
+    assert.throws(
+        () => tools.readFile.execute({ filePath: "src/missing.txt" }),
+        {
+            code: "FILE_NOT_FOUND",
+            message: /does not exist.*writeFile/i,
+        }
+    );
 });
 
 test("sandbox rejects traversal, absolute paths, home paths, protected paths, and escaping symlinks", (t) => {

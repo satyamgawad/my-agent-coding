@@ -32,7 +32,20 @@ function visibleEntries(directory, sandbox) {
 }
 
 function requireManageableTextFile(fullPath) {
-    const details = fs.statSync(fullPath);
+    let details;
+
+    try {
+        details = fs.statSync(fullPath);
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            throw fileError(
+                "The requested file does not exist. Use writeFile to create it, or inspect the project tree first.",
+                "FILE_NOT_FOUND"
+            );
+        }
+
+        throw error;
+    }
 
     if (!details.isFile()) {
         throw fileError("The requested path must be a regular file.", "INVALID_FILE_TYPE");

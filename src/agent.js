@@ -569,6 +569,15 @@ export default class Agent {
                 instruction ||= 'The active project root is directory: ".". Inspect that directory or a path inside it.';
             }
 
+            if (!result.ok && result.error.code === "FILE_NOT_FOUND") {
+                if (decision.arguments.filePath === pendingVerification) {
+                    pendingVerification = null;
+                    expectedVerificationContent = null;
+                }
+
+                instruction ||= "That file does not exist. If it belongs in the project, use writeFile to create it and read it back. Otherwise inspect its directory or the project tree first.";
+            }
+
             prompt = feedbackPrompt(task, result, instruction);
         }
 

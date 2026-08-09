@@ -105,8 +105,8 @@ function showResult(text, ok) {
   resultText.textContent = text;
 }
 
-function showRequestError(message) {
-  addActivity("Could not start the task", message, "failed");
+function showRequestError(message, title = "Could not start the task") {
+  addActivity(title, message, "failed");
   showResult(message, false);
 }
 
@@ -301,6 +301,7 @@ function handleModelRoute(event) {
 async function readEventStream(response) {
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffered = "";
+  let receivedResult = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -325,6 +326,7 @@ async function readEventStream(response) {
       if (eventName === "progress") handleProgress(parsed);
       if (eventName === "model") handleModelRoute(parsed);
       if (eventName === "result") {
+        receivedResult = true;
         showResult(parsed.result, parsed.ok);
         if (parsed.cancelled) {
           resultTitle.textContent = "Task cancelled";
@@ -338,10 +340,13 @@ async function readEventStream(response) {
       }
     }
   }
+
+  return receivedResult;
 }
 
 async function runTask(task) {
   activeTaskId = null;
+  let taskStarted = false;
   setRunning(true);
   clearActivity();
   addActivity("Task submitted", task, "user");
@@ -362,12 +367,23 @@ async function runTask(task) {
       throw new Error(body.error || "The agent could not start this task.");
     }
 
+    taskStarted = true;
     activeTaskId = response.headers.get("x-task-id");
     cancelButton.disabled = !activeTaskId;
-    await readEventStream(response);
+    const receivedResult = await readEventStream(response);
+    if (!receivedResult) {
+      throw new Error("The task stream ended before the agent returned a result.");
+    }
     await refreshContext();
   } catch (error) {
-    showRequestError(error.message || "The local agent is unavailable.");
+    if (taskStarted) {
+      showRequestError(
+        "The task started, but its live connection was interrupted before a final result arrived. Completed changes were kept. Refresh the dashboard, then review the project before starting another task.",
+        "Task connection interrupted"
+      );
+    } else {
+      showRequestError(error.message || "The local agent is unavailable.");
+    }
   } finally {
     setRunning(false);
   }

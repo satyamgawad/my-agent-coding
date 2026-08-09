@@ -10,6 +10,7 @@ import ProjectRunner from "./project-runner.js";
 import WorkspaceManager from "./workspace.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024;
+const SSE_HEARTBEAT_INTERVAL_MS = 15 * 1_000;
 const REMOTE_PASSWORD_MIN_LENGTH = 16;
 const DASHBOARD_USERNAME = "agent";
 const STATIC_ASSETS = new Map([
@@ -37,6 +38,24 @@ function responseJson(response, status, body) {
 
 function responseEvent(response, name, body) {
     response.write(`event: ${name}\ndata: ${JSON.stringify(body)}\n\n`);
+}
+
+function keepSseAlive(response) {
+    const heartbeat = setInterval(() => {
+        if (response.writableEnded || response.destroyed) {
+            clearInterval(heartbeat);
+            return;
+        }
+
+        try {
+            response.write(": keep-alive\n\n");
+        } catch {
+            clearInterval(heartbeat);
+        }
+    }, SSE_HEARTBEAT_INTERVAL_MS);
+
+    heartbeat.unref?.();
+    return () => clearInterval(heartbeat);
 }
 
 async function requestJson(request) {
@@ -324,6 +343,7 @@ export function createUiServer({
                 ...securityHeaders(),
             });
             responseEvent(response, "ready", { message: "The agent is working." });
+            const stopHeartbeat = keepSseAlive(response);
 
             const model = new ModelRouter({
                 mode,
@@ -360,6 +380,7 @@ export function createUiServer({
                     cancelled: taskRecord.controller.signal.aborted,
                 });
             } finally {
+                stopHeartbeat();
                 if (activeTask === taskRecord) {
                     activeTask = null;
                 }

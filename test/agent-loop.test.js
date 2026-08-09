@@ -240,6 +240,48 @@ test("agent rejects a read-back that does not match the preceding modification",
     assert.match(prompts[2], /Repair the file/);
 });
 
+test("agent can recover when a file disappears before its verification read", async () => {
+    const prompts = [];
+    let reads = 0;
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("writeFile", { filePath: "note.txt", content: "restored\n" }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("writeFile", { filePath: "note.txt", content: "restored\n" }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("test"),
+            { content: "The missing file was restored and verified." },
+        ], prompts),
+        {
+            tools: {
+                writeFile: {
+                    execute: ({ filePath, content }) => ({ filePath, content }),
+                },
+                readFile: {
+                    execute: () => {
+                        reads += 1;
+                        if (reads === 1) {
+                            throw Object.assign(
+                                new Error("The requested file does not exist."),
+                                { code: "FILE_NOT_FOUND" }
+                            );
+                        }
+                        return "restored\n";
+                    },
+                },
+                test: { execute: () => ({ exitCode: 0, stdout: "", stderr: "" }) },
+            },
+        }
+    );
+
+    assert.equal(
+        await agent.run("Restore a note file."),
+        "The missing file was restored and verified."
+    );
+    assert.match(prompts[2], /FILE_NOT_FOUND/);
+    assert.match(prompts[2], /use writeFile to create it/i);
+});
+
 test("agent forces recovery after a failing test until it is repaired and retested", async (t) => {
     const prompts = [];
     const { agent } = createAgent(t, [
