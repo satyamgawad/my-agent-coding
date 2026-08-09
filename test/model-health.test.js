@@ -6,9 +6,7 @@ import { MODEL_PROFILES } from "../src/model-router.js";
 test("model health maps the provider catalog onto every configured route", async () => {
     const health = new ModelHealth({
         listModels: async () => [
-            { id: MODEL_PROFILES.flash.id },
-            MODEL_PROFILES.ultra.id,
-            MODEL_PROFILES.glm.id,
+            ...Object.values(MODEL_PROFILES).map((profile) => ({ id: profile.id })),
             "unrelated/provider-model",
         ],
         now: () => Date.UTC(2026, 7, 9, 12),
@@ -20,11 +18,7 @@ test("model health maps the provider catalog onto every configured route", async
         status: "ready",
         checkedAt: "2026-08-09T12:00:00.000Z",
         cached: false,
-        models: [
-            { mode: "flash", ...MODEL_PROFILES.flash, available: true },
-            { mode: "ultra", ...MODEL_PROFILES.ultra, available: true },
-            { mode: "glm", ...MODEL_PROFILES.glm, available: true },
-        ],
+        models: Object.entries(MODEL_PROFILES).map(([mode, profile]) => ({ mode, ...profile, available: true })),
     });
 });
 
@@ -42,11 +36,10 @@ test("model health distinguishes degraded and unavailable routes", async () => {
     assert.equal(degradedResult.status, "degraded");
     assert.deepEqual(
         degradedResult.models.map(({ mode, available }) => ({ mode, available })),
-        [
-            { mode: "flash", available: false },
-            { mode: "ultra", available: true },
-            { mode: "glm", available: false },
-        ]
+        Object.entries(MODEL_PROFILES).map(([mode, profile]) => ({
+            mode,
+            available: profile.id === MODEL_PROFILES.ultra.id,
+        }))
     );
     assert.equal(unavailableResult.status, "unavailable");
     assert.equal(unavailableResult.models.every((profile) => !profile.available), true);
@@ -58,7 +51,7 @@ test("model health caches successful checks until its TTL expires", async () => 
     const health = new ModelHealth({
         listModels: async () => {
             calls += 1;
-            return [MODEL_PROFILES.flash.id];
+            return [MODEL_PROFILES.nano.id];
         },
         ttlMs: 1_000,
         now: () => now,
@@ -102,7 +95,7 @@ test("model health can explicitly bypass a valid cached catalog", async () => {
     const health = new ModelHealth({
         listModels: async () => {
             calls += 1;
-            return [MODEL_PROFILES.flash.id];
+            return [MODEL_PROFILES.nano.id];
         },
     });
 

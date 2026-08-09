@@ -89,7 +89,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     const stream = await task.text();
     assert.match(stream, /event: ready/);
     assert.match(stream, /event: model/);
-    assert.match(stream, /DeepSeek V4 Flash/);
+    assert.match(stream, /Nemotron 3 Nano/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
 
@@ -98,7 +98,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.equal(historyBody.records.length, 1);
     assert.equal(historyBody.records[0].status, "complete");
     assert.equal(historyBody.records[0].project, "notes-app");
-    assert.equal(historyBody.records[0].model, "DeepSeek V4 Flash");
+    assert.equal(historyBody.records[0].model, "Nemotron 3 Nano");
     assert.equal(Object.hasOwn(historyBody.records[0], "task"), false);
 });
 

@@ -1,10 +1,30 @@
 import Nemotron from "./nemotron.js";
 
 export const MODEL_PROFILES = Object.freeze({
-    flash: Object.freeze({
-        id: "deepseek-ai/deepseek-v4-flash",
-        label: "DeepSeek V4 Flash",
+    nano: Object.freeze({
+        id: "nvidia/nemotron-3-nano-30b-a3b",
+        label: "Nemotron 3 Nano",
         summary: "Fast lane",
+    }),
+    oss: Object.freeze({
+        id: "openai/gpt-oss-20b",
+        label: "GPT-OSS 20B",
+        summary: "Responsive open-weight lane",
+    }),
+    llama: Object.freeze({
+        id: "meta/llama-3.3-70b-instruct",
+        label: "Llama 3.3 70B",
+        summary: "General coding lane",
+    }),
+    kimi: Object.freeze({
+        id: "moonshotai/kimi-k2.6",
+        label: "Kimi K2.6",
+        summary: "Agentic coding lane",
+    }),
+    oss120: Object.freeze({
+        id: "openai/gpt-oss-120b",
+        label: "GPT-OSS 120B",
+        summary: "Deep open-weight lane",
     }),
     ultra: Object.freeze({
         id: "nvidia/nemotron-3-ultra-550b-a55b",
@@ -18,27 +38,57 @@ export const MODEL_PROFILES = Object.freeze({
     }),
 });
 
-export const MODEL_MODES = new Set(["auto", "flash", "ultra", "glm", "custom"]);
+// "flash" is retained only so an older NVIDIA_MODEL_MODE=flash setting keeps
+// working after DeepSeek's removal. The dashboard exposes the clear "nano"
+// name and all new model selections.
+const LEGACY_MODEL_MODE_ALIASES = Object.freeze({ flash: "nano" });
+export const MODEL_MODES = new Set([
+    "auto", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
+]);
 
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
 
-// Keep Auto responsive for everyday work.  A normal app or website request is
-// usually an iterative task, so it starts on Flash; the heavier lanes are
-// reserved for requests that explicitly signal more coordination or reasoning.
+// Keep Auto responsive for everyday work. A normal app or website request
+// starts with Nano; larger open-weight lanes are reserved for tasks that
+// explicitly signal more coordination or reasoning.
 const DEEP_WORK_TASK = /\b(architect(?:ure)?|long[- ]horizon|migrat|rewrite|security|system design|threat model)\b/i;
 const SUBSTANTIAL_TASK = /\b(authentication|database|deploy|full[- ]stack|large|multi[- ]file|refactor|integration|performance)\b/i;
 const DEEP_WORK_LENGTH = 1_200;
 
 function routeForTask(task) {
     if (task.length > DEEP_WORK_LENGTH || DEEP_WORK_TASK.test(task)) {
-        return [MODEL_PROFILES.glm, MODEL_PROFILES.ultra, MODEL_PROFILES.flash];
+        return [
+            MODEL_PROFILES.glm,
+            MODEL_PROFILES.kimi,
+            MODEL_PROFILES.oss120,
+            MODEL_PROFILES.ultra,
+            MODEL_PROFILES.llama,
+            MODEL_PROFILES.oss,
+            MODEL_PROFILES.nano,
+        ];
     }
 
     if (SUBSTANTIAL_TASK.test(task)) {
-        return [MODEL_PROFILES.ultra, MODEL_PROFILES.glm, MODEL_PROFILES.flash];
+        return [
+            MODEL_PROFILES.ultra,
+            MODEL_PROFILES.kimi,
+            MODEL_PROFILES.glm,
+            MODEL_PROFILES.oss120,
+            MODEL_PROFILES.llama,
+            MODEL_PROFILES.oss,
+            MODEL_PROFILES.nano,
+        ];
     }
 
-    return [MODEL_PROFILES.flash, MODEL_PROFILES.ultra, MODEL_PROFILES.glm];
+    return [
+        MODEL_PROFILES.nano,
+        MODEL_PROFILES.oss,
+        MODEL_PROFILES.llama,
+        MODEL_PROFILES.ultra,
+        MODEL_PROFILES.glm,
+        MODEL_PROFILES.kimi,
+        MODEL_PROFILES.oss120,
+    ];
 }
 
 function routeForMode(mode, task, customModel) {
@@ -90,7 +140,8 @@ export default class ModelRouter {
         unavailableProfiles = new Map(),
         now = () => Date.now(),
     } = {}) {
-        this.mode = mode || (customModel ? "custom" : "auto");
+        const requestedMode = mode || (customModel ? "custom" : "auto");
+        this.mode = LEGACY_MODEL_MODE_ALIASES[requestedMode] || requestedMode;
 
         if (!MODEL_MODES.has(this.mode)) {
             throw new Error(`Unsupported model mode: ${this.mode}.`);

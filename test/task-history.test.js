@@ -16,7 +16,7 @@ test("task history persists only safe task metadata in local SQLite", (t) => {
     const complete = history.record({
         createdAt: "2026-08-09T12:00:00.000Z",
         project: "notes-app",
-        model: "DeepSeek V4 Flash",
+        model: "Nemotron 3 Nano",
         ok: true,
         durationMs: 43,
     });
@@ -42,7 +42,7 @@ test("task history persists only safe task metadata in local SQLite", (t) => {
             id: 1,
             createdAt: "2026-08-09T12:00:00.000Z",
             project: "notes-app",
-            model: "DeepSeek V4 Flash",
+            model: "Nemotron 3 Nano",
             status: "complete",
             durationMs: 43,
         },

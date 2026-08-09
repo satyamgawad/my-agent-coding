@@ -35,20 +35,21 @@ Set your NVIDIA API key in `.env`:
 NVIDIA_API_KEY=your_nvidia_api_key_here
 ```
 
-By default, the agent routes each task across three open-weight models. Auto
-starts routine fixes and app/website builds with DeepSeek V4 Flash, uses
+By default, the agent routes each task across seven open-weight models. Auto
+starts routine fixes and app/website builds with Nemotron 3 Nano, uses
 Nemotron 3 Ultra for substantial full-stack or multi-file work, and reserves
-GLM-5.2 for architecture, security, migrations, and long-horizon tasks. If one
-provider is temporarily unavailable, it automatically moves to the next
-suitable model.
+GLM-5.2, Kimi K2.6, and GPT-OSS 120B for architecture, security, migrations,
+and long-horizon tasks. The complete route also includes GPT-OSS 20B and Llama
+3.3 70B as independent open-weight fallbacks. If one provider is temporarily
+unavailable, it automatically moves to the next suitable model.
 
 To start every task with one model, add one of these optional settings:
 
 ```dotenv
-NVIDIA_MODEL_MODE=flash  # or: ultra, glm
+NVIDIA_MODEL_MODE=nano  # or: oss, llama, kimi, oss120, ultra, glm
 ```
 
-To use a model not in the three-model route, set a custom model instead:
+To use a model not in the seven-model route, set a custom model instead:
 
 ```dotenv
 NVIDIA_MODEL=provider/model-id
@@ -83,7 +84,7 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on DeepSeek Flash and moves to Nemotron Ultra or GLM-5.2 only for heavier requests; you can still select one lane explicitly. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano and moves to stronger open-weight routes for heavier requests; you can still select any lane explicitly. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 

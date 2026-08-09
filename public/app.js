@@ -53,10 +53,14 @@ const toolLabels = {
 };
 
 const modelNotes = {
-  auto: "Auto starts fast for routine work and uses deeper lanes only when the task clearly needs them.",
-  flash: "Start with the fastest coding and tool-use model, then keep stronger fallbacks ready.",
-  ultra: "Start with the dependable NVIDIA coding model, with GLM and Flash available if needed.",
-  glm: "Start with maximum depth for complex, long-horizon work, with fast recovery options.",
+  auto: "Auto starts with the quick open-weight lane and moves through the strongest matching fallback when needed.",
+  nano: "Start with NVIDIA's compact open-weight coding and reasoning model.",
+  oss: "Use OpenAI's lightweight open-weight reasoning model for responsive coding work.",
+  llama: "Use Meta's open-weight general coding and instruction model.",
+  kimi: "Use Moonshot's open-weight agentic coding model for longer tool-driven work.",
+  oss120: "Use the largest GPT-OSS route for deep open-weight reasoning.",
+  ultra: "Start with NVIDIA's frontier open-weight coding and tool-use model.",
+  glm: "Start with maximum depth for complex, long-horizon work, with broad open-weight fallbacks.",
 };
 
 let workspaceContext = { project: null };
@@ -779,7 +783,7 @@ function renderModelHealth(health) {
   }
 
   if (unavailable.length === 0) {
-    modelHealth.textContent = "All three model routes are available.";
+    modelHealth.textContent = `All ${health.models?.length || 0} model routes are available.`;
     modelHealth.className = "model-health is-ready";
     return;
   }
