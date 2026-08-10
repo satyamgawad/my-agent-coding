@@ -116,9 +116,13 @@ function setConnection(text, offline = false) {
 }
 
 function setRunning(isRunning) {
-  runButton.disabled = isRunning || !taskStatusKnown;
-  taskInput.disabled = isRunning || !taskStatusKnown;
-  modelMode.disabled = isRunning || !taskStatusKnown;
+  const taskControlsDisabled = isRunning || !taskStatusKnown;
+  runButton.disabled = taskControlsDisabled;
+  taskInput.disabled = taskControlsDisabled;
+  modelMode.disabled = taskControlsDisabled;
+  for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
+    control.disabled = taskControlsDisabled;
+  }
   runButton.firstElementChild.textContent = isRunning ? "Working…" : "Run task";
   taskHint.textContent = isRunning
     ? "The agent is working through the task and streaming its verified steps."
@@ -826,6 +830,7 @@ async function refreshContext() {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = project;
+        button.disabled = !taskStatusKnown || Boolean(activeTaskId);
         button.classList.toggle("is-active", project === context.project);
         button.addEventListener("click", () => selectProject(project));
         item.append(button);

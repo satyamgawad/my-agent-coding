@@ -119,6 +119,7 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
   transition: border-color .16s ease, color .16s ease, background .16s ease;
 }
 .suggestions button:hover, .suggestions button:focus-visible { border-color: var(--aqua); color: var(--ink); background: rgba(137, 229, 206, .08); outline: none; }
+.suggestions button:disabled { cursor: not-allowed; opacity: .45; }
 
 .task-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
 .task-footer p { max-width: 300px; margin: 0; color: #858d83; font-size: 12px; line-height: 1.45; }
@@ -144,6 +145,7 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .project-list button { width: calc(100% - 22px); overflow: hidden; border: 0; padding: 4px 0; color: inherit; background: transparent; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .project-list button:hover, .project-list button:focus-visible, .project-list button.is-active { color: var(--ink); outline: none; }
 .project-list button.is-active { color: var(--acid); }
+.project-list button:disabled { cursor: not-allowed; opacity: .48; }
 .project-list .empty-state { color: #747b73; font-family: inherit; font-size: 12px; line-height: 1.4; white-space: normal; }
 .project-list .empty-state::before { content: ""; }
 .project-runner { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }

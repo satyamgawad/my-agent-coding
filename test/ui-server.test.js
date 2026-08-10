@@ -434,6 +434,69 @@ test("the authenticated active-task status supports dashboard recovery without e
     assert.deepEqual(await idle.json(), { state: "idle", taskId: null });
 });
 
+test("the dashboard locks project selection while an agent task is active", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    fs.mkdirSync(path.join(root, "projects", "first-project"), { recursive: true });
+    fs.mkdirSync(path.join(root, "projects", "second-project"), { recursive: true });
+    let markModelStarted;
+    const modelStarted = new Promise((resolve) => {
+        markModelStarted = resolve;
+    });
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate(_prompt, { signal }) {
+                markModelStarted();
+                return new Promise((resolve, reject) => {
+                    signal.addEventListener("abort", () => reject(new Error("Request aborted.")), { once: true });
+                });
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const selectFirst = await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "first-project" }),
+    });
+    assert.equal(selectFirst.status, 200);
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Wait for cancellation." }),
+    });
+    const taskId = task.headers.get("x-task-id");
+    await modelStarted;
+
+    const blocked = await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "second-project" }),
+    });
+    assert.equal(blocked.status, 409);
+    assert.deepEqual(await blocked.json(), {
+        error: "Wait for the active task to finish before changing projects.",
+        code: "ACTIVE_TASK_WORKSPACE_LOCKED",
+    });
+
+    const context = await fetch(`${baseUrl}/api/context`);
+    assert.equal((await context.json()).project, "first-project");
+
+    await fetch(`${baseUrl}/api/tasks/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ taskId }),
+    });
+    await task.text();
+});
+
 test("the Railway health check exposes no project data and detects unsafe project storage", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-outside-"));
@@ -551,6 +614,14 @@ test("the dashboard code labels a dropped started stream as a connection interru
 
     assert.match(script, /Task connection interrupted/);
     assert.match(script, /task stream ended before the agent returned a result/i);
+});
+
+test("the dashboard disables workspace-changing controls until active task state is known", () => {
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(script, /const taskControlsDisabled = isRunning \|\| !taskStatusKnown/);
+    assert.match(script, /document\.querySelectorAll\("\[data-prompt\], #project-list button"\)/);
+    assert.match(script, /button\.disabled = !taskStatusKnown \|\| Boolean\(activeTaskId\)/);
 });
 
 test("the dashboard renders local project readiness checks", () => {

@@ -60,6 +60,28 @@ export const TOOL_ARGUMENT_SCHEMAS = {
         required: { command: { type: "string", nonEmpty: true } },
     },
     test: {},
+    rememberLesson: {
+        required: { lesson: { type: "string", nonEmpty: true } },
+        optional: { tags: { type: "string" } },
+    },
+    readAgentSource: {
+        required: { filePath: { type: "string", nonEmpty: true } },
+    },
+    writeAgentSource: {
+        required: {
+            filePath: { type: "string", nonEmpty: true },
+            content: { type: "string" },
+        },
+    },
+    editAgentSource: {
+        required: {
+            filePath: { type: "string", nonEmpty: true },
+            oldText: { type: "string", nonEmpty: true },
+            newText: { type: "string" },
+        },
+        optional: { replaceAll: { type: "boolean" } },
+    },
+    testAgentSource: {},
 };
 
 function isPlainObject(value) {

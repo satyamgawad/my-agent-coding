@@ -263,6 +263,27 @@ Select the todo app and add authentication.
 
 For a new application, the model must first create an isolated project such as `projects/todo-app/`. On later instructions in the same session, that project remains active, so “Add dark mode” changes the Todo application rather than `my-agent/src`.
 
+## Local learning and guarded self-improvement
+
+The agent can retain short, reusable engineering lessons locally. Lessons are
+stored in `projects/.agent-data/agent-lessons.json`, are bounded in size, redact
+common secret assignments, and are supplied only as untrusted advisory context
+when they match a later task. They are not model training, do not send data to a
+third party, and must never contain task prompts, source excerpts, credentials,
+or personal data.
+
+For an explicit request such as **“Improve the agent's own source code”**, the
+agent can inspect and change a narrow, non-security-critical subset of its own
+repository. Every source change is read back and must pass the agent's own
+`npm test` suite before it can report success. It can improve dashboard files,
+tests, documentation, model routing, model health, project intelligence, and
+task-history behavior.
+
+The agent cannot self-edit the execution sandbox, terminal policy, tool
+validation, workspace isolation, server access control, credentials, or other
+safety-critical files. Those boundaries are deliberately manual-only. Normal
+project tasks continue to operate only in `projects/<project-name>/`.
+
 ## Available tools
 
 The model receives its tool list from the same registry that executes tools. It cannot successfully call unregistered tools; unknown names, malformed JSON, and invalid arguments are returned as structured errors for recovery.
@@ -276,6 +297,10 @@ The model receives its tool list from the same registry that executes tools. It 
 | `editFile` | Replace exact existing text safely; ambiguous or missing matches fail. |
 | `test` | Run `npm test` in the active project. |
 | `terminal` | Run a small allowlist of development commands. |
+| `rememberLesson` | Save one short, non-secret local lesson for relevant future tasks. |
+| `readAgentSource` | Read permitted agent source during an explicit self-improvement task. |
+| `writeAgentSource`, `editAgentSource` | Change permitted non-security-critical agent source, then read it back. |
+| `testAgentSource` | Run the agent's own `npm test` after a self-improvement change. |
 
 `terminal` accepts only:
 
@@ -298,12 +323,13 @@ There is no terminal working-directory argument, shell operators, redirection, o
 - All file paths must be relative. Absolute paths, `~`, `../` traversal, protected `.env` files, `.git`, `node_modules`, and symlinks that resolve outside the project are rejected.
 - Tool failures use `{ ok, tool, result, error }`, allowing the model to inspect and recover without crashing the session.
 - Each agent run has a 30-step limit. If it reaches the limit, it reports what it completed rather than claiming success.
+- Agent-source tools are unavailable unless the user explicitly asks for self-improvement, and they cannot edit the safety-critical boundaries listed above.
 
 The terminal allowlist removes shell injection and caller-controlled directories, but this is not a kernel-level security sandbox: npm scripts and build tools execute project code. Use generated projects and dependencies you trust; do not treat this as a safe runner for hostile code.
 
 ## Verification behavior
 
-After every `writeFile` or `editFile`, the agent must immediately read the same file and compare its actual contents with the expected result. A final success response is blocked until the latest verified modification has a passing `npm test` run.
+After every `writeFile` or `editFile`, the agent must immediately read the same file and compare its actual contents with the expected result. A final success response is blocked until the latest verified modification has a passing `npm test` run. The same gate applies to `writeAgentSource` and `editAgentSource`, except those changes require `readAgentSource` and `testAgentSource`.
 
 The system prompt also tells the model to inspect first, create a usable multi-file application rather than a placeholder, run `npm run build` when the project's `package.json` provides a build script, inspect errors, repair them, and retest.
 

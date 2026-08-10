@@ -488,6 +488,17 @@ export function createUiServer({
         }
 
         if (request.method === "POST" && url.pathname === "/api/projects/select") {
+            // The agent and dashboard share one active workspace. Changing it
+            // from a second dashboard action while a task is running could
+            // send the remaining tool calls to the wrong generated project.
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task to finish before changing projects.",
+                    code: "ACTIVE_TASK_WORKSPACE_LOCKED",
+                });
+                return;
+            }
+
             try {
                 const body = await requestJson(request);
                 const name = typeof body?.name === "string" ? body.name : "";

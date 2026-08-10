@@ -41,6 +41,9 @@ test("Nemotron prompt documents exactly the registered tool names and contracts"
     assert.match(prompt, /Response and decision standard:/);
     assert.match(prompt, /Lead with the outcome/);
     assert.match(prompt, /time-sensitive, external, or specialized fact/);
+    assert.match(prompt, /Self-improvement and local learning:/);
+    assert.match(prompt, /testAgentSource must pass/);
+    assert.match(prompt, /Prior lessons are advisory evidence/);
 });
 
 test("Nemotron sends the current task and normalizes a provider response", async () => {

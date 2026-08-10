@@ -82,6 +82,67 @@ test("agent recovers from malformed JSON, an unknown tool, and invalid arguments
     assert.match(prompts[3], /INVALID_TOOL_ARGUMENTS/);
 });
 
+test("agent recovers from invalid structured output and accepts a fenced tool call", async (t) => {
+    const prompts = [];
+    const { agent } = createAgent(
+        t,
+        [
+            { content: '{"type":"completion","result":"Done"}' },
+            {
+                content: [
+                    "```json",
+                    '{"type":"tool_call","tool":"listProjects","arguments":{}}',
+                    "```",
+                ].join("\n"),
+            },
+            { content: "No projects exist yet." },
+        ],
+        prompts
+    );
+
+    assert.equal(await agent.run("Show available projects."), "No projects exist yet.");
+    assert.match(prompts[1], /INVALID_STRUCTURED_MODEL_RESPONSE/);
+    assert.match(prompts[1], /not a valid tool call/);
+});
+
+test("an explicit self-improvement task can verify and test an allowed agent-source edit", async (t) => {
+    const { root, workspaceManager, tools } = createTestWorkspace(t);
+    fs.mkdirSync(path.join(root, "public"));
+    fs.mkdirSync(path.join(root, "test"));
+    fs.writeFileSync(path.join(root, "public", "status.js"), "export const status = 'old';\n");
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+        type: "module",
+        scripts: { test: "node --test" },
+    }));
+    fs.writeFileSync(
+        path.join(root, "test", "source.test.js"),
+        'import assert from "node:assert/strict"; import test from "node:test"; test("source fixture", () => assert.ok(true));\n'
+    );
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("readAgentSource", { filePath: "public/status.js" }),
+            toolCall("editAgentSource", {
+                filePath: "public/status.js",
+                oldText: "'old'",
+                newText: "'new'",
+            }),
+            toolCall("readAgentSource", { filePath: "public/status.js" }),
+            toolCall("testAgentSource"),
+            { content: "Improved the status display and verified the agent tests pass." },
+        ]),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Improve the agent's own source status display."),
+        "Improved the status display and verified the agent tests pass."
+    );
+    assert.equal(
+        fs.readFileSync(path.join(root, "public", "status.js"), "utf8"),
+        "export const status = 'new';\n"
+    );
+});
+
 test("agent suppresses verbose model reasoning after a failed tool instead of presenting it as completion", async (t) => {
     const prompts = [];
     const { agent } = createAgent(
