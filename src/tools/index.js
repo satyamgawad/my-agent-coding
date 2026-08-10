@@ -5,6 +5,8 @@ import { createTerminalTool } from "./terminal.js";
 import { createTestTool } from "./test.js";
 import { ALLOWED_TERMINAL_COMMANDS, TOOL_ARGUMENT_SCHEMAS } from "./validation.js";
 import LearningMemory from "../learning-memory.js";
+import { ProjectEvaluator } from "../project-intelligence.js";
+import ProjectPlan from "../project-plan.js";
 
 const SOURCE_ONLY_TOOLS = new Set([
     "readAgentSource",
@@ -53,6 +55,22 @@ export const TOOL_DEFINITIONS = {
         description: "Recursively show the active project's unprotected file structure.",
         arguments: { directory: "string" },
     },
+    projectReadiness: {
+        description: "Evaluate the active project's deterministic implementation, manifest, test, and documentation readiness checks.",
+        arguments: {},
+    },
+    createProjectPlan: {
+        description: "Save a private milestone plan for a large active project. Milestones need lowercase-hyphen ids, titles, optional descriptions, and optional dependencies on earlier milestone ids.",
+        arguments: { goal: "string", milestones: "array of milestone objects" },
+    },
+    readProjectPlan: {
+        description: "Read the active project's private saved milestone plan and progress.",
+        arguments: {},
+    },
+    updateMilestone: {
+        description: "Update one saved milestone's status: pending, in_progress, blocked, or completed. Dependencies must complete before in_progress or completed.",
+        arguments: { id: "string", status: "string", notes: "string (optional)" },
+    },
     terminal: {
         description: `Run one allowlisted development command in the active project: ${ALLOWED_TERMINAL_COMMANDS.join(", ")}.`,
         arguments: { command: "string" },
@@ -92,6 +110,8 @@ export function createTools(workspaceManager, { learningMemory } = {}) {
     const files = createFileTools(workspaceManager);
     const projects = createProjectTools(workspaceManager);
     const memory = learningMemory ?? new LearningMemory({ workspaceManager });
+    const projectEvaluator = new ProjectEvaluator(workspaceManager);
+    const projectPlan = new ProjectPlan({ workspaceManager });
 
     const tools = {
         createProject: {
@@ -125,6 +145,22 @@ export function createTools(workspaceManager, { learningMemory } = {}) {
         projectTree: {
             description: TOOL_DEFINITIONS.projectTree.description,
             execute: createProjectTreeTool(workspaceManager),
+        },
+        projectReadiness: {
+            description: TOOL_DEFINITIONS.projectReadiness.description,
+            execute: () => projectEvaluator.evaluate(),
+        },
+        createProjectPlan: {
+            description: TOOL_DEFINITIONS.createProjectPlan.description,
+            execute: (argumentsValue) => projectPlan.create(argumentsValue),
+        },
+        readProjectPlan: {
+            description: TOOL_DEFINITIONS.readProjectPlan.description,
+            execute: () => projectPlan.read(),
+        },
+        updateMilestone: {
+            description: TOOL_DEFINITIONS.updateMilestone.description,
+            execute: (argumentsValue) => projectPlan.update(argumentsValue),
         },
         terminal: {
             description: TOOL_DEFINITIONS.terminal.description,

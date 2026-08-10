@@ -56,6 +56,21 @@ export const TOOL_ARGUMENT_SCHEMAS = {
     projectTree: {
         required: { directory: { type: "string", nonEmpty: true } },
     },
+    projectReadiness: {},
+    createProjectPlan: {
+        required: {
+            goal: { type: "string", nonEmpty: true },
+            milestones: { type: "array", minItems: 1, maxItems: 12 },
+        },
+    },
+    readProjectPlan: {},
+    updateMilestone: {
+        required: {
+            id: { type: "string", nonEmpty: true },
+            status: { type: "string", nonEmpty: true },
+        },
+        optional: { notes: { type: "string" } },
+    },
     terminal: {
         required: { command: { type: "string", nonEmpty: true } },
     },
@@ -89,6 +104,22 @@ function isPlainObject(value) {
 }
 
 function validateField(name, value, rules) {
+    if (rules.type === "array") {
+        if (!Array.isArray(value)) {
+            return `${name} must be an array.`;
+        }
+
+        if (rules.minItems && value.length < rules.minItems) {
+            return `${name} must include at least ${rules.minItems} item${rules.minItems === 1 ? "" : "s"}.`;
+        }
+
+        if (rules.maxItems && value.length > rules.maxItems) {
+            return `${name} must include at most ${rules.maxItems} items.`;
+        }
+
+        return null;
+    }
+
     if (typeof value !== rules.type) {
         return `${name} must be a ${rules.type}.`;
     }

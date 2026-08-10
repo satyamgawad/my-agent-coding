@@ -11,6 +11,7 @@ import ModelRouter, { MODEL_MODES } from "./model-router.js";
 import Nemotron, { listNvidiaModels } from "./nemotron.js";
 import ProjectArtifacts from "./project-artifacts.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
+import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
 import TaskHistory from "./task-history.js";
 import WorkspaceManager from "./workspace.js";
@@ -233,6 +234,7 @@ export function createUiServer({
     const projectArtifacts = new ProjectArtifacts(workspaceManager);
     const publisher = githubPublisher || new GitHubPublisher({ projectArtifacts });
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
+    const projectPlan = new ProjectPlan({ workspaceManager });
     const projectRunner = new ProjectRunner(workspaceManager);
     const taskHistory = new TaskHistory({ workspaceManager });
     const unavailableProfiles = new Map();
@@ -349,6 +351,34 @@ export function createUiServer({
                     score: 0,
                     message: "Project readiness checks are temporarily unavailable.",
                     checks: [],
+                });
+            }
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/projects/plan") {
+            if (!workspaceManager.getContext().project) {
+                responseJson(response, 200, {
+                    state: "idle",
+                    project: null,
+                    goal: null,
+                    progress: { completed: 0, total: 0 },
+                    milestones: [],
+                    message: "Select a project to see its saved milestone plan.",
+                });
+                return;
+            }
+
+            try {
+                responseJson(response, 200, projectPlan.read());
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    project: workspaceManager.getContext().project,
+                    goal: null,
+                    progress: { completed: 0, total: 0 },
+                    milestones: [],
+                    message: "Project plan metadata is temporarily unavailable.",
                 });
             }
             return;

@@ -102,6 +102,7 @@ function createBuildScenario() {
             toolCall("readFile", { filePath: "calculator.test.js" }),
             toolCall("terminal", { command: "npm run build" }),
             toolCall("test"),
+            toolCall("projectReadiness"),
             { content: "Created the calculator and verified its build and tests." },
         ],
         verify({ workspaceManager, result, mode }) {

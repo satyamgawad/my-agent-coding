@@ -19,6 +19,9 @@ const deliveryStatus = document.querySelector("#delivery-status");
 const evaluationScore = document.querySelector("#evaluation-score");
 const evaluationSummary = document.querySelector("#evaluation-summary");
 const evaluationChecks = document.querySelector("#evaluation-checks");
+const planProgress = document.querySelector("#plan-progress");
+const planSummary = document.querySelector("#plan-summary");
+const planMilestones = document.querySelector("#plan-milestones");
 const runEvaluationsButton = document.querySelector("#run-evaluations");
 const runLiveEvaluationsButton = document.querySelector("#run-live-evaluations");
 const agentEvaluationStatus = document.querySelector("#evaluation-status");
@@ -45,6 +48,10 @@ const toolLabels = {
   selectProject: "Selected a project",
   listFiles: "Listed files",
   projectTree: "Inspected the project structure",
+  projectReadiness: "Checked project readiness",
+  createProjectPlan: "Saved project milestones",
+  readProjectPlan: "Read project milestones",
+  updateMilestone: "Updated a milestone",
   readFile: "Read a file",
   writeFile: "Wrote a file",
   editFile: "Updated a file",
@@ -78,6 +85,14 @@ let projectEvaluation = {
   score: 0,
   message: "Select a project to see its local engineering readiness checks.",
   checks: [],
+};
+let savedProjectPlan = {
+  state: "idle",
+  project: null,
+  goal: null,
+  progress: { completed: 0, total: 0 },
+  milestones: [],
+  message: "Select a project to see its saved milestone plan.",
 };
 let agentEvaluation = {
   state: "loading",
@@ -415,6 +430,29 @@ function renderProjectEvaluation() {
   }
 }
 
+function renderProjectPlan() {
+  const progress = savedProjectPlan.progress || { completed: 0, total: 0 };
+  planProgress.textContent = workspaceContext.project ? `${progress.completed || 0}/${progress.total || 0}` : "—";
+  planSummary.textContent = savedProjectPlan.message
+    || savedProjectPlan.goal
+    || "Project plan metadata is temporarily unavailable.";
+  planMilestones.textContent = "";
+
+  for (const milestone of savedProjectPlan.milestones || []) {
+    const item = document.createElement("li");
+    item.className = `plan-milestone is-${milestone.status || "pending"}`;
+    const title = document.createElement("strong");
+    title.textContent = `${milestone.status || "pending"} · ${milestone.title || milestone.id || "Milestone"}`;
+    const detail = document.createElement("p");
+    const dependencies = Array.isArray(milestone.dependsOn) && milestone.dependsOn.length > 0
+      ? `Depends on: ${milestone.dependsOn.join(", ")}. `
+      : "";
+    detail.textContent = `${dependencies}${milestone.notes || milestone.description || "No notes yet."}`;
+    item.append(title, detail);
+    planMilestones.append(item);
+  }
+}
+
 async function refreshProjectEvaluation() {
   const projectAtRequest = workspaceContext.project;
 
@@ -448,6 +486,43 @@ async function refreshProjectEvaluation() {
   }
 
   renderProjectEvaluation();
+}
+
+async function refreshProjectPlan() {
+  const projectAtRequest = workspaceContext.project;
+
+  if (!projectAtRequest) {
+    savedProjectPlan = {
+      state: "idle",
+      project: null,
+      goal: null,
+      progress: { completed: 0, total: 0 },
+      milestones: [],
+      message: "Select a project to see its saved milestone plan.",
+    };
+    renderProjectPlan();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/projects/plan", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Project plan metadata is unavailable.");
+    const plan = await response.json();
+    if (workspaceContext.project !== projectAtRequest) return;
+    savedProjectPlan = plan;
+  } catch {
+    if (workspaceContext.project !== projectAtRequest) return;
+    savedProjectPlan = {
+      state: "unavailable",
+      project: projectAtRequest,
+      goal: null,
+      progress: { completed: 0, total: 0 },
+      milestones: [],
+      message: "Project plan metadata is temporarily unavailable.",
+    };
+  }
+
+  renderProjectPlan();
 }
 
 function renderAgentEvaluation() {
@@ -842,6 +917,7 @@ async function refreshContext() {
       refreshProjectStatus(),
       refreshStaticPreviewStatus(),
       refreshProjectEvaluation(),
+      refreshProjectPlan(),
       refreshGitHubStatus(),
     ]);
   } catch {

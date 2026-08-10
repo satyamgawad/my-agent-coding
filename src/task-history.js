@@ -119,6 +119,18 @@ export default class TaskHistory {
                 VALUES (?, ?, ?, ?, ?)
             `).run(entry.createdAt, entry.project, entry.model, entry.status, entry.durationMs);
 
+            // Keep the on-disk history bounded as well as the dashboard view.
+            // Without this pruning, the read limit would hide an ever-growing
+            // SQLite file on a persistent deployment volume.
+            database.prepare(`
+                DELETE FROM task_history
+                WHERE id NOT IN (
+                    SELECT id FROM task_history
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+            `).run(MAX_RECORDS);
+
             return { id: Number(result.lastInsertRowid), ...entry };
         } finally {
             database.close();

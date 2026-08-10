@@ -51,6 +51,22 @@ test("task history persists only safe task metadata in local SQLite", (t) => {
     assert.deepEqual(workspaceManager.listProjects(), []);
 });
 
+test("task history retains only its bounded recent record set", (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-history-test-"));
+    const history = new TaskHistory({ workspaceManager: new WorkspaceManager({ agentRoot: root }) });
+
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+    for (let index = 0; index < 51; index += 1) {
+        history.record({ createdAt: `2026-08-09T12:${String(index).padStart(2, "0")}:00.000Z` });
+    }
+
+    const records = history.recent(50);
+    assert.equal(records.length, 50);
+    assert.equal(records[0].id, 51);
+    assert.equal(records.at(-1).id, 2);
+});
+
 test("task history rejects a symlinked local database", (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-history-test-"));
     const database = path.join(root, "history.sqlite");

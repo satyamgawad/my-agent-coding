@@ -71,6 +71,7 @@ test("scripted end-to-end session creates, modifies, inspects, and protects a To
             toolCall("readFile", { filePath: "todo.test.js" }),
             toolCall("terminal", { command: "npm run build" }),
             toolCall("test"),
+            toolCall("projectReadiness"),
             { content: "Created the Todo application, verified each file, and passed build and tests." },
         ]),
         { workspaceManager, tools }

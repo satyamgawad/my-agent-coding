@@ -580,6 +580,7 @@ test("agent does not retrieve an old project when the task creates a new applica
             }),
             toolCall("readFile", { filePath: "app.test.js" }),
             toolCall("test"),
+            toolCall("projectReadiness"),
             { content: "Created and verified the new portfolio application." },
         ], prompts),
         { workspaceManager, tools }
@@ -609,15 +610,18 @@ test("application tasks cannot finish before verified source, tests, and a passi
             { content: "The application is complete." },
             toolCall("test"),
             { content: "The application is complete and verified." },
+            toolCall("projectReadiness"),
+            { content: "The application is complete, tested, and ready." },
         ],
         prompts
     );
 
     assert.equal(
         await agent.run("Create a small checklist application."),
-        "The application is complete and verified."
+        "The application is complete, tested, and ready."
     );
     assert.match(prompts[8], /Run npm test successfully/);
+    assert.match(prompts[10], /Run projectReadiness/);
 });
 
 test("application tasks require tests with a meaningful assertion", async (t) => {
@@ -642,6 +646,7 @@ test("application tasks require tests with a meaningful assertion", async (t) =>
             }),
             toolCall("readFile", { filePath: "app.test.js" }),
             toolCall("test"),
+            toolCall("projectReadiness"),
             { content: "Created and verified an application with behavior tests." },
         ],
         prompts
@@ -652,4 +657,46 @@ test("application tasks require tests with a meaningful assertion", async (t) =>
         "Created and verified an application with behavior tests."
     );
     assert.match(prompts[7], /no meaningful assertion/);
+});
+
+test("large new applications require a completed private milestone plan before delivery", async (t) => {
+    const prompts = [];
+    const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
+    const { agent } = createAgent(
+        t,
+        [
+            toolCall("createProject", { name: "Launch Console" }),
+            { content: "The application is complete." },
+            toolCall("createProjectPlan", {
+                goal: "Deliver a tested launch console in two milestones.",
+                milestones: [
+                    { id: "foundation", title: "Build and test the console" },
+                    { id: "delivery", title: "Review delivery evidence", dependsOn: ["foundation"] },
+                ],
+            }),
+            toolCall("updateMilestone", { id: "foundation", status: "in_progress" }),
+            toolCall("writeFile", { filePath: "package.json", content: packageJson }),
+            toolCall("readFile", { filePath: "package.json" }),
+            toolCall("writeFile", { filePath: "app.js", content: "export const ready = true;\n" }),
+            toolCall("readFile", { filePath: "app.js" }),
+            toolCall("writeFile", {
+                filePath: "app.test.js",
+                content: 'import assert from "node:assert/strict"; import test from "node:test"; test("is ready", () => assert.equal(true, true));\n',
+            }),
+            toolCall("readFile", { filePath: "app.test.js" }),
+            toolCall("test"),
+            toolCall("projectReadiness"),
+            toolCall("updateMilestone", { id: "foundation", status: "completed" }),
+            toolCall("updateMilestone", { id: "delivery", status: "in_progress" }),
+            toolCall("updateMilestone", { id: "delivery", status: "completed", notes: "Tests and readiness passed." }),
+            { content: "Delivered the launch console with completed milestones and passing checks." },
+        ],
+        prompts
+    );
+
+    assert.equal(
+        await agent.run("Create a large multi-phase launch console application."),
+        "Delivered the launch console with completed milestones and passing checks."
+    );
+    assert.match(prompts[1], /createProjectPlan/);
 });

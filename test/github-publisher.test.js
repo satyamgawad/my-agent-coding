@@ -22,7 +22,7 @@ function publisherFixture(t) {
     return new ProjectArtifacts(workspaceManager);
 }
 
-test("GitHub publisher sends only safe active-project source after exact confirmation", async (t) => {
+test("GitHub publisher commits only safe active-project source in one branch update", async (t) => {
     const projectArtifacts = publisherFixture(t);
     const requests = [];
     const publisher = new GitHubPublisher({
@@ -32,12 +32,45 @@ test("GitHub publisher sends only safe active-project source after exact confirm
         branch: "main",
         async fetchImpl(url, options = {}) {
             requests.push({ url, options });
+            const method = options.method || "GET";
+            const pathname = new URL(url).pathname;
 
-            if (options.method === "PUT") {
-                return new Response(JSON.stringify({ content: { sha: "created" } }), { status: 201 });
+            if (method === "GET" && pathname.endsWith("/git/ref/heads/main")) {
+                return new Response(JSON.stringify({ object: { sha: "base-commit" } }));
             }
 
-            return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+            if (method === "GET" && pathname.endsWith("/git/commits/base-commit")) {
+                return new Response(JSON.stringify({ tree: { sha: "base-tree" } }));
+            }
+
+            if (method === "GET" && pathname.endsWith("/contents/app.js")) {
+                return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+            }
+
+            if (method === "GET" && pathname.endsWith("/contents/package.json")) {
+                return new Response(JSON.stringify({ sha: "existing-package" }));
+            }
+
+            if (method === "POST" && pathname.endsWith("/git/blobs")) {
+                const blobCount = requests.filter((request) => (
+                    request.options.method === "POST" && request.url.endsWith("/git/blobs")
+                )).length;
+                return new Response(JSON.stringify({ sha: `blob-${blobCount}` }), { status: 201 });
+            }
+
+            if (method === "POST" && pathname.endsWith("/git/trees")) {
+                return new Response(JSON.stringify({ sha: "next-tree" }), { status: 201 });
+            }
+
+            if (method === "POST" && pathname.endsWith("/git/commits")) {
+                return new Response(JSON.stringify({ sha: "next-commit" }), { status: 201 });
+            }
+
+            if (method === "PATCH" && pathname.endsWith("/git/refs/heads/main")) {
+                return new Response(JSON.stringify({ object: { sha: "next-commit" } }));
+            }
+
+            throw new Error(`Unexpected GitHub request: ${method} ${pathname}`);
         },
     });
 
@@ -61,20 +94,77 @@ test("GitHub publisher sends only safe active-project source after exact confirm
         repository: "owner/generated-apps",
         branch: "main",
         project: "notes-app",
-        created: 2,
-        updated: 0,
+        created: 1,
+        updated: 1,
         total: 2,
-        message: "Published 2 safe source files to owner/generated-apps (main). Existing remote files not in this project were not deleted.",
+        message: "Published 2 safe source files to owner/generated-apps (main) in one commit. Existing remote files not in this project were not deleted.",
     });
 
-    const updatedFiles = requests
-        .filter((request) => request.options.method === "PUT")
-        .map((request) => ({ url: request.url, body: JSON.parse(request.options.body) }));
-    assert.equal(updatedFiles.length, 2);
-    assert.equal(updatedFiles.every((request) => request.url.includes("owner/generated-apps/contents/")), true);
-    assert.equal(updatedFiles.some((request) => /\.env|node_modules/.test(request.url)), false);
-    assert.equal(updatedFiles.some((request) => Buffer.from(request.body.content, "base64").toString("utf8").includes("never-publish")), false);
+    const blobs = requests
+        .filter((request) => request.options.method === "POST" && request.url.endsWith("/git/blobs"))
+        .map((request) => JSON.parse(request.options.body));
+    assert.equal(blobs.length, 2);
+    assert.equal(blobs.every((blob) => blob.encoding === "base64"), true);
+    assert.equal(blobs.some((blob) => Buffer.from(blob.content, "base64").toString("utf8").includes("never-publish")), false);
+    assert.equal(requests.some((request) => /\.env|node_modules/.test(request.url)), false);
+    assert.equal(requests.some((request) => request.options.method === "PUT"), false);
+
+    const tree = JSON.parse(requests.find((request) => request.url.endsWith("/git/trees")).options.body);
+    assert.deepEqual(tree, {
+        base_tree: "base-tree",
+        tree: [
+            { path: "app.js", mode: "100644", type: "blob", sha: "blob-1" },
+            { path: "package.json", mode: "100644", type: "blob", sha: "blob-2" },
+        ],
+    });
+    const commit = JSON.parse(requests.find((request) => request.url.endsWith("/git/commits")).options.body);
+    assert.deepEqual(commit, {
+        message: "chore: sync notes-app source",
+        tree: "next-tree",
+        parents: ["base-commit"],
+    });
+    const refUpdate = JSON.parse(requests.find((request) => request.options.method === "PATCH").options.body);
+    assert.deepEqual(refUpdate, { sha: "next-commit", force: false });
     assert.doesNotMatch(JSON.stringify(result), /github-private-token/);
+});
+
+test("GitHub publisher rejects an uninitialized branch before writing source", async (t) => {
+    const projectArtifacts = publisherFixture(t);
+    const requests = [];
+    const publisher = new GitHubPublisher({
+        projectArtifacts,
+        token: "github-private-token",
+        repository: "owner/generated-apps",
+        async fetchImpl(url, options = {}) {
+            requests.push({ url, options });
+            return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+        },
+    });
+
+    await assert.rejects(
+        publisher.publish({ confirmation: "owner/generated-apps" }),
+        { code: "GITHUB_BRANCH_UNINITIALIZED" }
+    );
+    assert.equal(requests.length, 1);
+    assert.match(requests[0].url, /\/git\/ref\/heads\/main$/);
+});
+
+test("GitHub publisher refuses to force-push when the branch changes", async () => {
+    const publisher = new GitHubPublisher({
+        projectArtifacts: {},
+        token: "github-private-token",
+        repository: "owner/generated-apps",
+        async fetchImpl(_url, options = {}) {
+            assert.equal(options.method, "PATCH");
+            assert.deepEqual(JSON.parse(options.body), { sha: "next-commit", force: false });
+            return new Response(JSON.stringify({ message: "Conflict" }), { status: 409 });
+        },
+    });
+
+    await assert.rejects(
+        publisher.updateBranch("next-commit"),
+        { code: "GITHUB_BRANCH_CHANGED" }
+    );
 });
 
 test("GitHub publisher reports missing configuration without exposing a token", () => {

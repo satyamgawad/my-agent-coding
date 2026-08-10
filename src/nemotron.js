@@ -11,7 +11,12 @@ function argumentSchema(argumentsDefinition) {
     for (const [name, description] of Object.entries(argumentsDefinition)) {
         const optional = description.includes("optional");
         properties[name] = {
-            type: description.startsWith("boolean") ? "boolean" : "string",
+            type: description.startsWith("boolean")
+                ? "boolean"
+                : description.startsWith("array")
+                    ? "array"
+                    : "string",
+            ...(description.startsWith("array") ? { items: { type: "object" } } : {}),
             description: name,
         };
 
@@ -124,12 +129,13 @@ When a tool is necessary, output exactly one valid JSON object and nothing else.
 
 Workflow:
 1. Understand the request. For an existing project, inspect its tree and relevant files before editing.
-2. For a new application, call createProject first. Generated applications must stay under projects/<project-name>. Do not use agent-source tools for ordinary project work. After createProject or selectProject, that project is already the active workspace: use directory "." for its root and never pass the selected project name as a file-tool directory.
+2. For a new application, call createProject first. Generated applications must stay under projects/<project-name>. For a large, multi-phase, or full-stack application, call createProjectPlan next with a concise goal and 2-6 ordered milestones. Use lowercase-hyphen ids, make dependencies point only to earlier ids, mark a milestone in_progress before its work, and mark it completed only after its evidence is complete. The plan is private local metadata, not a project source file. Do not use agent-source tools for ordinary project work. After createProject or selectProject, that project is already the active workspace: use directory "." for its root and never pass the selected project name as a file-tool directory.
 3. Plan and implement a usable result, not a placeholder or one isolated file. Use writeFile for new/whole-file content and editFile for a precise existing-text replacement.
 4. Immediately after every writeFile or editFile, call readFile on that exact file. The agent will reject an unverified change.
-5. After the implementation is complete, run terminal with "npm run build" when package.json defines a build script, then run test. Read errors, repair them, verify repairs, rebuild when needed, and retest.
-6. Do not claim success when a tool failed, a file was not verified, or tests failed. Explain completed work and verification in the final answer.
-7. Prefer Node's built-in test tools (node:test and node:assert/strict) for a small project. Do not import a test library unless it is declared in package.json and installed. For a browser-only script without a DOM test environment, use a focused static-content test rather than inventing browser globals.
+5. Maintain an evidence checklist as you work: the requested behavior, affected files, validation or edge cases, and the command results that prove it. Use that checklist to choose the next concrete tool action; do not expose it as private reasoning.
+6. After implementation, run terminal with "npm run build" when package.json defines a build script, then run test. For a newly created application, run projectReadiness after the tests pass and repair every failed core check. Read errors, repair them, verify repairs, rebuild when needed, and retest.
+7. Do not claim success when a tool failed, a file was not verified, tests failed, or a required projectReadiness check is incomplete. Explain completed work and verification in the final answer.
+8. Prefer Node's built-in test tools (node:test and node:assert/strict) for a small project. Do not import a test library unless it is declared in package.json and installed. For a browser-only script without a DOM test environment, use a focused static-content test rather than inventing browser globals.
 
 Self-improvement and local learning:
 - Use readAgentSource, writeAgentSource, editAgentSource, and testAgentSource only when the user's task explicitly asks to improve this coding agent, itself, or its own source. They are unavailable for ordinary project work.

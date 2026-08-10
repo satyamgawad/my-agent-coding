@@ -22,7 +22,8 @@ project list and is preserved by the Railway volume described below.
 
 ## Install and configure
 
-Use Node.js 22 or later.
+Use Node.js 22.13 or later. This is the first Node 22 release where the built-in
+SQLite module used for private task history no longer needs an experimental flag.
 
 ```bash
 npm install
@@ -124,7 +125,7 @@ repository and explicit authorization.
 ### Optional GitHub source publishing
 
 The dashboard can publish an active generated project to one existing GitHub
-repository. It is deliberately disabled until you configure it. Create a
+repository and initialized branch. It is deliberately disabled until you configure it. Create a
 fine-grained GitHub token limited to that repository with **Contents: Read and
 write**, then add the following secrets locally or in Railway's Variables tab:
 
@@ -136,10 +137,10 @@ GITHUB_BRANCH=main
 
 The dashboard shows the configured target and asks for a final confirmation
 before every publish. Publishing adds or updates only safe project source
-files; it omits environment files, tokens, keys, dependencies, symlinks, and
-Git metadata, and never deletes remote files. It does not create repositories,
-branches, pull requests, or GitHub Actions secrets. Keep the token out of Git
-and do not paste it into a task prompt.
+files in one atomic branch update; it omits environment files, tokens, keys,
+dependencies, symlinks, and Git metadata, and never deletes remote files. It
+does not create repositories, branches, pull requests, or GitHub Actions
+secrets. Keep the token out of Git and do not paste it into a task prompt.
 
 ### Project intelligence
 
@@ -155,6 +156,14 @@ project. They score implementation files, a valid `package.json`, behavior
 tests with assertions, test/build commands, and optional README notes. This is
 a deterministic engineering checklist—not a claim that the model or app is
 fully correct—so use it alongside the agent's actual build and test results.
+
+For a large, multi-phase, or full-stack new application, the agent now creates
+a private milestone plan before implementation and updates it as milestones are
+verified. Plans live under `projects/.agent-data/`, outside generated source,
+downloads, and publishing. They give later tasks the active project's goal,
+dependencies, and delivery progress without relying on one long chat context.
+Milestones are only marked complete after their dependencies and local evidence
+are complete.
 
 The **Agent evaluations** card runs a separate, isolated baseline suite. It
 checks the agent harness can build and test a small application, make a safe
@@ -295,6 +304,7 @@ The model receives its tool list from the same registry that executes tools. It 
 | `listFiles`, `projectTree`, `readFile` | Inspect the active project. |
 | `writeFile` | Create or replace a file in the active project. |
 | `editFile` | Replace exact existing text safely; ambiguous or missing matches fail. |
+| `projectReadiness` | Check the active project's implementation, manifest, test, and documentation readiness. |
 | `test` | Run `npm test` in the active project. |
 | `terminal` | Run a small allowlist of development commands. |
 | `rememberLesson` | Save one short, non-secret local lesson for relevant future tasks. |
@@ -326,6 +336,13 @@ There is no terminal working-directory argument, shell operators, redirection, o
 - Agent-source tools are unavailable unless the user explicitly asks for self-improvement, and they cannot edit the safety-critical boundaries listed above.
 
 The terminal allowlist removes shell injection and caller-controlled directories, but this is not a kernel-level security sandbox: npm scripts and build tools execute project code. Use generated projects and dependencies you trust; do not treat this as a safe runner for hostile code.
+
+Generated-project commands run with a minimal temporary environment, so they do
+not inherit the agent's NVIDIA, GitHub, or dashboard secrets. The production
+Docker image also makes the agent source read-only to the unprivileged runtime;
+use a development checkout for the explicit self-improvement workflow. These
+measures reduce credential and source-tampering risk, but they do not replace a
+separate sandboxed container or microVM for hostile project code.
 
 ## Verification behavior
 

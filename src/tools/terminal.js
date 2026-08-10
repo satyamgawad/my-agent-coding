@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { createSandbox } from "./sandbox.js";
@@ -80,11 +81,39 @@ function commandSpec(command, sandbox) {
     );
 }
 
+function commandEnvironment() {
+    // npm scripts execute generated project code. Do not pass the agent
+    // process environment into that code: it can contain model, publishing,
+    // and dashboard credentials. A private temporary npm home also prevents
+    // project commands from reading the operator's npm configuration.
+    const runtimeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-command-"));
+    const npmConfig = path.join(runtimeDirectory, "npmrc");
+    const globalNpmConfig = path.join(runtimeDirectory, "global-npmrc");
+    fs.writeFileSync(npmConfig, "", { mode: 0o600 });
+    fs.writeFileSync(globalNpmConfig, "", { mode: 0o600 });
+
+    return {
+        env: {
+            PATH: process.env.PATH || "",
+            HOME: runtimeDirectory,
+            USERPROFILE: runtimeDirectory,
+            npm_config_userconfig: npmConfig,
+            npm_config_globalconfig: globalNpmConfig,
+            npm_config_cache: path.join(runtimeDirectory, "npm-cache"),
+            npm_config_update_notifier: "false",
+        },
+        cleanup() {
+            fs.rmSync(runtimeDirectory, { recursive: true, force: true });
+        },
+    };
+}
+
 export function createTerminalTool(workspaceManager) {
     const sandbox = createSandbox(() => workspaceManager.getActiveWorkspace());
 
     return async function runTerminal({ command }, { signal } = {}) {
         const selectedCommand = commandSpec(command, sandbox);
+        const environment = commandEnvironment();
 
         try {
             const { stdout, stderr } = await execFileAsync(
@@ -96,6 +125,7 @@ export function createTerminalTool(workspaceManager) {
                     timeout: COMMAND_TIMEOUT_MS,
                     shell: false,
                     signal,
+                    env: environment.env,
                 }
             );
 
@@ -110,6 +140,8 @@ export function createTerminalTool(workspaceManager) {
                 stderr: boundedOutput(error.stderr || error.message),
                 exitCode: Number.isInteger(error.code) ? error.code : 1,
             };
+        } finally {
+            environment.cleanup();
         }
     };
 }

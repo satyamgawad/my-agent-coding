@@ -211,6 +211,16 @@ test("the dashboard reports deterministic engineering readiness for the active p
         checks: [],
     });
 
+    const idlePlan = await fetch(`${baseUrl}/api/projects/plan`);
+    assert.deepEqual(await idlePlan.json(), {
+        state: "idle",
+        project: null,
+        goal: null,
+        progress: { completed: 0, total: 0 },
+        milestones: [],
+        message: "Select a project to see its saved milestone plan.",
+    });
+
     await fetch(`${baseUrl}/api/projects/select`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -632,6 +642,16 @@ test("the dashboard renders local project readiness checks", () => {
     assert.match(page, /id="evaluation-score"/);
     assert.match(script, /\/api\/projects\/evaluation/);
     assert.match(script, /renderProjectEvaluation/);
+});
+
+test("the dashboard renders private milestone progress for large projects", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /MILESTONE PLAN/);
+    assert.match(page, /id="plan-milestones"/);
+    assert.match(script, /\/api\/projects\/plan/);
+    assert.match(script, /renderProjectPlan/);
 });
 
 test("the dashboard renders and starts the agent baseline evaluation suite", () => {

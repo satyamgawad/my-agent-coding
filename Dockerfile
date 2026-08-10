@@ -18,9 +18,10 @@ RUN npm ci --omit=dev --ignore-scripts \
 RUN addgroup -S codingagent \
     && adduser -S -G codingagent codingagent
 
-COPY --chown=codingagent:codingagent . .
+COPY . .
 RUN mkdir -p /app/projects \
-    && chown -R codingagent:codingagent /app
+    && chown -R root:root /app \
+    && chown -R codingagent:codingagent /app/projects
 
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod 755 /usr/local/bin/docker-entrypoint
