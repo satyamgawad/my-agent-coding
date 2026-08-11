@@ -105,6 +105,50 @@ test("agent recovers from invalid structured output and accepts a fenced tool ca
     assert.match(prompts[1], /not a valid tool call/);
 });
 
+test("Smart mode plans first, reviews the completion, and saves a project handoff", async (t) => {
+    const prompts = [];
+    const { workspaceManager, tools } = createTestWorkspace(t);
+    workspaceManager.createProject("Notes");
+    const agent = new Agent(
+        scriptedModel([
+            { content: "Goal: explain the selected project. Approach: inspect the project and report only verified facts. Verify: no workspace change is needed." },
+            { content: "The selected project is ready for inspection." },
+            { content: "VERDICT: APPROVED" },
+        ], prompts),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Explain the selected project.", { smart: true }),
+        "The selected project is ready for inspection."
+    );
+    assert.match(prompts[0], /Smart planning pass/);
+    assert.match(prompts[1], /Smart execution brief/);
+    assert.match(prompts[2], /Smart completion review/);
+    assert.match(agent.projectBrief.read().plan, /inspect the project/i);
+});
+
+test("Smart mode continues after an independent review identifies missing work", async (t) => {
+    const prompts = [];
+    const { agent } = createAgent(
+        t,
+        [
+            { content: "Goal: answer concisely. Approach: verify the response. Verify: review the result." },
+            { content: "The task is complete." },
+            { content: "VERDICT: NEEDS_WORK\nState the requested outcome clearly." },
+            { content: "The requested outcome is complete." },
+            { content: "VERDICT: APPROVED" },
+        ],
+        prompts
+    );
+
+    assert.equal(
+        await agent.run("Explain the task outcome.", { smart: true }),
+        "The requested outcome is complete."
+    );
+    assert.match(prompts[3], /Independent Smart review found a concrete gap/);
+});
+
 test("an explicit self-improvement task can verify and test an allowed agent-source edit", async (t) => {
     const { root, workspaceManager, tools } = createTestWorkspace(t);
     fs.mkdirSync(path.join(root, "public"));

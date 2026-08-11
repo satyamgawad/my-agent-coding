@@ -22,6 +22,8 @@ const evaluationChecks = document.querySelector("#evaluation-checks");
 const planProgress = document.querySelector("#plan-progress");
 const planSummary = document.querySelector("#plan-summary");
 const planMilestones = document.querySelector("#plan-milestones");
+const briefSummary = document.querySelector("#brief-summary");
+const briefDetails = document.querySelector("#brief-details");
 const runEvaluationsButton = document.querySelector("#run-evaluations");
 const runLiveEvaluationsButton = document.querySelector("#run-live-evaluations");
 const agentEvaluationStatus = document.querySelector("#evaluation-status");
@@ -64,6 +66,8 @@ const toolLabels = {
 
 const modelNotes = {
   auto: "Auto starts with the quick open-weight lane and moves through the strongest matching fallback when needed.",
+  smart: "Uses a deep-work route, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
+  custom: "Uses the custom model configured in your private environment, such as a fine-tuned NVIDIA NIM deployment.",
   nano: "Start with NVIDIA's compact open-weight coding and reasoning model.",
   oss: "Use OpenAI's lightweight open-weight reasoning model for responsive coding work.",
   llama: "Use Meta's open-weight general coding and instruction model.",
@@ -96,6 +100,15 @@ let savedProjectPlan = {
   progress: { completed: 0, total: 0 },
   milestones: [],
   message: "Select a project to see its saved milestone plan.",
+};
+let savedProjectBrief = {
+  state: "idle",
+  project: null,
+  goal: null,
+  plan: null,
+  outcome: null,
+  updatedAt: null,
+  message: "Select Smart mode to save a compact handoff for this project.",
 };
 let agentEvaluation = {
   state: "loading",
@@ -464,6 +477,29 @@ function renderProjectPlan() {
   }
 }
 
+function renderProjectBrief() {
+  briefSummary.textContent = savedProjectBrief.message
+    || "Smart mode brief is temporarily unavailable.";
+  briefDetails.textContent = "";
+
+  if (savedProjectBrief.state !== "ready") return;
+
+  for (const [label, value] of [
+    ["LAST GOAL", savedProjectBrief.goal],
+    ["APPROACH", savedProjectBrief.plan],
+    ["VERIFIED OUTCOME", savedProjectBrief.outcome],
+  ]) {
+    if (!value) continue;
+    const item = document.createElement("div");
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const detail = document.createElement("dd");
+    detail.textContent = value;
+    item.append(term, detail);
+    briefDetails.append(item);
+  }
+}
+
 async function refreshProjectEvaluation() {
   const projectAtRequest = workspaceContext.project;
 
@@ -534,6 +570,45 @@ async function refreshProjectPlan() {
   }
 
   renderProjectPlan();
+}
+
+async function refreshProjectBrief() {
+  const projectAtRequest = workspaceContext.project;
+
+  if (!projectAtRequest) {
+    savedProjectBrief = {
+      state: "idle",
+      project: null,
+      goal: null,
+      plan: null,
+      outcome: null,
+      updatedAt: null,
+      message: "Select a project to use its Smart mode brief.",
+    };
+    renderProjectBrief();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/projects/brief", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Smart mode brief is unavailable.");
+    const brief = await response.json();
+    if (workspaceContext.project !== projectAtRequest) return;
+    savedProjectBrief = brief;
+  } catch {
+    if (workspaceContext.project !== projectAtRequest) return;
+    savedProjectBrief = {
+      state: "unavailable",
+      project: projectAtRequest,
+      goal: null,
+      plan: null,
+      outcome: null,
+      updatedAt: null,
+      message: "Smart mode project brief is temporarily unavailable.",
+    };
+  }
+
+  renderProjectBrief();
 }
 
 function renderAgentEvaluation() {
@@ -999,6 +1074,7 @@ async function refreshContext() {
       refreshStaticPreviewStatus(),
       refreshProjectEvaluation(),
       refreshProjectPlan(),
+      refreshProjectBrief(),
       refreshProjectConversation(),
       refreshGitHubStatus(),
     ]);
@@ -1064,6 +1140,21 @@ function handleProgress(event) {
 
   if (event.message?.startsWith("model: retrying")) {
     addActivity("Reconnecting to the model", "The agent will retry automatically.");
+    return;
+  }
+
+  if (event.message === "smart: creating implementation brief") {
+    addActivity("Smart planning", "Creating a compact implementation brief before editing.");
+    return;
+  }
+
+  if (event.message === "smart: reviewing completion") {
+    addActivity("Independent review", "Checking the proposed outcome against verified task evidence.");
+    return;
+  }
+
+  if (event.message === "smart: saved project brief") {
+    addActivity("Saved Smart brief", "A compact handoff is ready for a later project task.");
     return;
   }
 

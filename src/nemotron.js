@@ -33,7 +33,7 @@ function argumentSchema(argumentsDefinition) {
     };
 }
 
-function nativeToolDefinitions() {
+export function nativeToolDefinitions() {
     return Object.entries(TOOL_DEFINITIONS).map(([name, definition]) => ({
         type: "function",
         function: {
@@ -69,18 +69,29 @@ function nativeToolContent(toolCalls) {
     }
 }
 
-function createClient() {
-    const apiKey = process.env.NVIDIA_API_KEY;
+export function modelEndpointConfig(environment = process.env) {
+    const apiKey = environment.AGENT_MODEL_API_KEY || environment.NVIDIA_API_KEY;
+    const baseURL = environment.AGENT_MODEL_BASE_URL || "https://integrate.api.nvidia.com/v1";
 
     if (!apiKey) {
         throw new Error(
-            "NVIDIA_API_KEY is missing. Add it to .env before running the agent."
+            "AGENT_MODEL_API_KEY or NVIDIA_API_KEY is missing. Add the provider key to .env before running the agent."
         );
     }
 
+    if (typeof baseURL !== "string" || !/^https?:\/\/[^\s]+$/i.test(baseURL)) {
+        throw new Error("AGENT_MODEL_BASE_URL must be a valid HTTP(S) API base URL.");
+    }
+
+    return { apiKey, baseURL };
+}
+
+function createClient(environment = process.env) {
+    const { apiKey, baseURL } = modelEndpointConfig(environment);
+
     return new OpenAI({
         apiKey,
-        baseURL: "https://integrate.api.nvidia.com/v1",
+        baseURL,
     });
 }
 

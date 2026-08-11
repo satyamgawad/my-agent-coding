@@ -47,7 +47,7 @@ unavailable, it automatically moves to the next suitable model.
 To start every task with one model, add one of these optional settings:
 
 ```dotenv
-NVIDIA_MODEL_MODE=nano  # or: oss, llama, kimi, oss120, ultra, glm
+NVIDIA_MODEL_MODE=nano  # or: smart, oss, llama, kimi, oss120, ultra, glm
 ```
 
 To use a model not in the seven-model route, set a custom model instead:
@@ -57,6 +57,12 @@ NVIDIA_MODEL=provider/model-id
 ```
 
 Use either `NVIDIA_MODEL_MODE` or `NVIDIA_MODEL`; leave both out to use Auto.
+
+Choose `NVIDIA_MODEL_MODE=smart` for important changes where quality matters
+more than speed. Smart mode starts with the deep-work route, creates a compact
+implementation brief, and independently reviews the final result before it is
+reported. It makes additional model requests, so it is slower and uses more
+credits than Auto.
 
 For unusually large multi-file tasks, you can raise the agent's step budget
 from its default of 30 to a value between 10 and 100:
@@ -85,7 +91,7 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano and moves to stronger open-weight routes for heavier requests; you can still select any lane explicitly. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano and moves to stronger open-weight routes for heavier requests; you can still select any lane explicitly. Select **Smart** for a deeper planning and independent-review pass; its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 
@@ -175,6 +181,37 @@ dependencies, and delivery progress without relying on one long chat context.
 Milestones are only marked complete after their dependencies and local evidence
 are complete.
 
+### Fine-tuning a custom model
+
+The repository includes a local, safe preparation pipeline under `training/`
+for improving a compatible open-weight model with LoRA. It validates curated
+chat/tool-call JSONL records, redacts common credential patterns, and scores a
+deployed candidate against a separate hold-out set. It does not train from the
+dashboard or send your task history to any provider.
+
+Start with the reviewed sample records, then replace or expand them with your
+own carefully reviewed examples:
+
+```bash
+npm run prepare:finetune
+```
+
+Upload the generated `training/build/agent-tool-calls.ready.jsonl` and a
+separate validation set to NVIDIA NeMo Customizer, deploy the resulting model
+through NVIDIA NIM, then set the private custom endpoint variables documented
+in `.env.example`. Choose **Fine-tuned** in the dashboard for the deployed
+model alone, or **Smart** to use it with the planning/review workflow. Evaluate
+it before changing the normal agent route:
+
+```bash
+FINETUNE_MODEL=your-workspace/your-finetuned-model npm run evaluate:finetune
+```
+
+See [`training/README.md`](training/README.md) for the required data standard,
+deployment handoff, and current NVIDIA documentation links. Never train on
+credentials, raw conversation history, hidden reasoning, or unreviewed model
+output.
+
 The **Agent evaluations** card runs a separate, isolated baseline suite. It
 checks the agent harness can build and test a small application, make a safe
 existing-project change, and reject a protected-file write. Results report the
@@ -261,7 +298,7 @@ Type `exit`, `quit`, or press `Ctrl+C` to leave the session. The regular interfa
 npm start -- --debug
 ```
 
-Each task starts with a short `Working…` indicator and reports completed actions with a checkmark. One-shot commands return a non-zero exit code if the agent cannot complete the task, which makes them suitable for scripts and CI checks.
+Each task starts with a short `Working…` indicator and reports completed actions with a checkmark. Interactive and one-shot commands both use the same bounded local agent conversation, so a later command can follow up on earlier work. One-shot commands return a non-zero exit code if the agent cannot complete the task, which makes them suitable for scripts and CI checks.
 
 You can also run one instruction and exit:
 

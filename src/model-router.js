@@ -43,7 +43,7 @@ export const MODEL_PROFILES = Object.freeze({
 // name and all new model selections.
 const LEGACY_MODEL_MODE_ALIASES = Object.freeze({ flash: "nano" });
 export const MODEL_MODES = new Set([
-    "auto", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
+    "auto", "smart", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
 ]);
 
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
@@ -102,6 +102,29 @@ function routeForMode(mode, task, customModel) {
 
     if (mode === "auto") {
         return routeForTask(task);
+    }
+
+    if (mode === "smart") {
+        if (customModel) {
+            return [{
+                id: customModel,
+                label: customModel,
+                summary: "Smart fine-tuned custom model",
+            }];
+        }
+
+        // Smart mode spends an extra model call on an implementation brief and
+        // another on an independent final review. Start it on the deepest
+        // route so those deliberate passes improve judgement, not only speed.
+        return [
+            MODEL_PROFILES.glm,
+            MODEL_PROFILES.kimi,
+            MODEL_PROFILES.oss120,
+            MODEL_PROFILES.ultra,
+            MODEL_PROFILES.llama,
+            MODEL_PROFILES.oss,
+            MODEL_PROFILES.nano,
+        ];
     }
 
     const selected = MODEL_PROFILES[mode];

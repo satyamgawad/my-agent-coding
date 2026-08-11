@@ -184,9 +184,9 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .preview-scope { margin: 11px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
 .preview-scope strong { color: var(--muted); font-weight: 800; }
 
-.project-evaluation, .project-plan { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }
+.project-evaluation, .project-plan, .project-brief { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); }
 .evaluation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.project-evaluation h3, .project-plan h3 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.03em; }
+.project-evaluation h3, .project-plan h3, .project-brief h3 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.03em; }
 .evaluation-score { display: inline-flex; align-items: baseline; gap: 2px; margin: 0; color: #818a80; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; }
 .evaluation-score strong { color: var(--acid); font-size: 23px; letter-spacing: -.08em; }
 .evaluation-summary { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
@@ -204,6 +204,11 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .plan-milestone.is-completed { border-color: rgba(137, 229, 206, .25); }
 .plan-milestone.is-blocked { border-color: rgba(255, 156, 122, .34); }
 .plan-milestone strong { display: block; font-size: 11px; letter-spacing: -.01em; }
+.brief-summary { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.brief-details { display: grid; gap: 7px; margin: 13px 0 0; }
+.brief-details div { padding: 8px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 8px; background: rgba(0, 0, 0, .1); }
+.brief-details dt { color: var(--acid); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+.brief-details dd { margin: 3px 0 0; color: #8b928a; font-size: 10px; line-height: 1.4; white-space: pre-wrap; }
 .plan-milestone p { margin: 3px 0 0; color: #8b928a; font-size: 10px; line-height: 1.35; }
 
 .preview-dialog {

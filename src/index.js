@@ -81,13 +81,40 @@ export function createAgent(debug) {
 }
 
 export function taskFailed(result) {
-    return result.startsWith("❌") || result.startsWith("Stopped after");
+    return typeof result === "string" && (
+        result.startsWith("❌") || result.startsWith("Stopped after")
+    );
 }
 
 export async function runOneTask(agent, task, { sessionContext } = {}) {
     console.log("\nWorking…");
     const result = await agent.run(task, { sessionContext });
     console.log(`\n${taskFailed(result) ? "Agent could not complete the task" : "Agent"}: ${result}`);
+    return result;
+}
+
+/**
+ * Run a task with the same bounded conversation used by the dashboard. Local
+ * conversation storage is helpful context, not a dependency for completing a
+ * task, so a damaged or unavailable history never blocks the agent.
+ */
+export async function runRememberedTask(agent, task, projectSession) {
+    let sessionContext = [];
+
+    try {
+        sessionContext = projectSession?.recent(AGENT_CONVERSATION_ID) || [];
+    } catch {
+        console.warn("⚠ Saved conversation is unavailable; continuing without prior context.");
+    }
+
+    const result = await runOneTask(agent, task, { sessionContext });
+
+    try {
+        projectSession?.record(AGENT_CONVERSATION_ID, { task, outcome: result });
+    } catch {
+        console.warn("⚠ Task finished, but its conversation context could not be saved.");
+    }
+
     return result;
 }
 
@@ -127,13 +154,7 @@ async function runInteractive(agent) {
                 break;
             }
 
-            const result = await runOneTask(agent, task, {
-                sessionContext: projectSession.recent(AGENT_CONVERSATION_ID),
-            });
-            projectSession.record(
-                AGENT_CONVERSATION_ID,
-                { task, outcome: result }
-            );
+            await runRememberedTask(agent, task, projectSession);
             console.log("");
         }
     } finally {
@@ -151,9 +172,10 @@ export async function main() {
     }
 
     const agent = createAgent(debug);
+    const projectSession = new ProjectSession({ workspaceManager: agent.workspaceManager });
 
     if (task) {
-        const result = await runOneTask(agent, task);
+        const result = await runRememberedTask(agent, task, projectSession);
         if (taskFailed(result)) {
             process.exitCode = 1;
         }

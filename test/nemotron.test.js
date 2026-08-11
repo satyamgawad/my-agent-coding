@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import Nemotron, { createSystemPrompt, listNvidiaModels } from "../src/nemotron.js";
+import Nemotron, { createSystemPrompt, listNvidiaModels, modelEndpointConfig } from "../src/nemotron.js";
 import { TOOL_DEFINITIONS } from "../src/tools/index.js";
 
 function createClient(response) {
@@ -147,6 +147,21 @@ test("Nemotron accepts an explicit model override for routed tasks", async () =>
     await new Nemotron({ client, model: "z-ai/glm-5.2" }).generate("Plan the task.");
 
     assert.equal(requests[0].model, "z-ai/glm-5.2");
+});
+
+test("a fine-tuned OpenAI-compatible model endpoint can override NVIDIA's hosted default", () => {
+    assert.deepEqual(modelEndpointConfig({
+        NVIDIA_API_KEY: "nvidia-key",
+        AGENT_MODEL_API_KEY: "nim-key",
+        AGENT_MODEL_BASE_URL: "https://nim.example.test/v1",
+    }), {
+        apiKey: "nim-key",
+        baseURL: "https://nim.example.test/v1",
+    });
+    assert.throws(
+        () => modelEndpointConfig({ NVIDIA_API_KEY: "key", AGENT_MODEL_BASE_URL: "not-a-url" }),
+        /AGENT_MODEL_BASE_URL/
+    );
 });
 
 test("Nemotron forwards a cancellation signal to the provider request", async () => {

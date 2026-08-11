@@ -47,6 +47,8 @@
             </div>
             <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
               <option value="auto" selected>Auto · all seven</option>
+              <option value="smart">Smart · plan + independent review</option>
+              <option value="custom">Fine-tuned · custom endpoint</option>
               <option value="nano">Fast · Nemotron 3 Nano</option>
               <option value="oss">Responsive · GPT-OSS 20B</option>
               <option value="llama">General · Llama 3.3 70B</option>
@@ -138,6 +140,16 @@
             </div>
             <p class="plan-summary" id="plan-summary" aria-live="polite">Select a project to see its saved milestone plan.</p>
             <ol class="plan-milestones" id="plan-milestones" aria-label="Saved project milestones"></ol>
+          </section>
+          <section class="project-brief" aria-labelledby="project-brief-title">
+            <div class="evaluation-heading">
+              <div>
+                <p class="muted-label">SMART MODE BRIEF</p>
+                <h3 id="project-brief-title">Project handoff</h3>
+              </div>
+            </div>
+            <p class="brief-summary" id="brief-summary" aria-live="polite">Select Smart mode to save a compact handoff for this project.</p>
+            <dl class="brief-details" id="brief-details"></dl>
           </section>
         </aside>
       </section>

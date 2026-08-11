@@ -157,6 +157,57 @@ test("the dashboard saves an ongoing agent conversation before a project exists"
     }]);
 });
 
+test("the dashboard runs Smart mode and exposes its saved project handoff", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate(prompt) {
+                if (prompt.includes("Smart planning pass")) {
+                    return { content: "Goal: improve the notes project. Approach: inspect and update the selected project. Verify: run its tests." };
+                }
+
+                if (prompt.includes("Smart completion review")) {
+                    return { content: "VERDICT: APPROVED" };
+                }
+
+                return { content: "Improved the selected project." };
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    fs.mkdirSync(path.join(root, "projects", "notes-app"), { recursive: true });
+    await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "notes-app" }),
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Improve the selected project.", mode: "smart" }),
+    });
+    assert.equal(task.status, 200);
+    const stream = await task.text();
+    assert.match(stream, /smart: creating implementation brief/);
+    assert.match(stream, /smart: reviewing completion/);
+    assert.match(stream, /Improved the selected project/);
+
+    const brief = await fetch(`${baseUrl}/api/projects/brief`);
+    const briefBody = await brief.json();
+    assert.equal(briefBody.state, "ready");
+    assert.match(briefBody.goal, /Improve the selected project/);
+    assert.match(briefBody.plan, /inspect and update/i);
+    assert.match(briefBody.outcome, /Improved the selected project/);
+});
+
 test("the dashboard exposes configured GitHub publishing only after repository confirmation", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const calls = [];
@@ -707,6 +758,17 @@ test("the dashboard renders private milestone progress for large projects", () =
     assert.match(page, /id="plan-milestones"/);
     assert.match(script, /\/api\/projects\/plan/);
     assert.match(script, /renderProjectPlan/);
+});
+
+test("the dashboard renders the Smart mode selector and saved handoff", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /value="smart"/);
+    assert.match(page, /value="custom"/);
+    assert.match(page, /id="brief-details"/);
+    assert.match(script, /\/api\/projects\/brief/);
+    assert.match(script, /renderProjectBrief/);
 });
 
 test("the dashboard renders and clears the saved agent conversation", () => {

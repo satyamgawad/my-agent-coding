@@ -53,6 +53,25 @@ test("automatic routing starts routine builds quickly and reserves deeper lanes 
     );
 });
 
+test("Smart mode starts on the deep-work route for planning and independent review", () => {
+    const router = new ModelRouter({ mode: "smart", customModel: null });
+    assert.equal(
+        router.selectRoute("Add a search field to the current project.").id,
+        MODEL_PROFILES.glm.id
+    );
+});
+
+test("Smart mode uses a configured fine-tuned model for every planning and review pass", () => {
+    const router = new ModelRouter({
+        mode: "smart",
+        customModel: "default/coding-agent-lora",
+    });
+    assert.equal(
+        router.selectRoute("Improve the selected project.").id,
+        "default/coding-agent-lora"
+    );
+});
+
 test("routing is recalculated for each new agent task", () => {
     const router = new ModelRouter({ customModel: null });
 

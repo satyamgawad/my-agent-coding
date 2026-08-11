@@ -10,6 +10,7 @@ import ModelHealth from "./model-health.js";
 import ModelRouter, { MODEL_MODES } from "./model-router.js";
 import Nemotron, { listNvidiaModels } from "./nemotron.js";
 import ProjectArtifacts from "./project-artifacts.js";
+import ProjectBrief from "./project-brief.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
@@ -235,6 +236,7 @@ export function createUiServer({
     const projectArtifacts = new ProjectArtifacts(workspaceManager);
     const publisher = githubPublisher || new GitHubPublisher({ projectArtifacts });
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
+    const projectBrief = new ProjectBrief({ workspaceManager });
     const projectPlan = new ProjectPlan({ workspaceManager });
     const projectRunner = new ProjectRunner(workspaceManager);
     const projectSession = new ProjectSession({ workspaceManager });
@@ -386,6 +388,23 @@ export function createUiServer({
             return;
         }
 
+        if (request.method === "GET" && url.pathname === "/api/projects/brief") {
+            try {
+                responseJson(response, 200, projectBrief.read());
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    project: workspaceManager.getContext().project,
+                    goal: null,
+                    plan: null,
+                    outcome: null,
+                    updatedAt: null,
+                    message: "Smart mode project brief is temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
         if (request.method === "GET" && url.pathname === "/api/conversation") {
             try {
                 const turns = projectSession.recent(AGENT_CONVERSATION_ID);
@@ -463,7 +482,10 @@ export function createUiServer({
                 return;
             }
 
-            if (evaluationMode === "live" && (!MODEL_MODES.has(modelMode) || modelMode === "custom")) {
+            if (evaluationMode === "live" && (
+                !MODEL_MODES.has(modelMode) ||
+                (modelMode === "custom" && !process.env.NVIDIA_MODEL)
+            )) {
                 responseJson(response, 400, { error: "Choose a supported model mode for the live evaluation." });
                 return;
             }
@@ -669,7 +691,7 @@ export function createUiServer({
                 return;
             }
 
-            if (!MODEL_MODES.has(mode) || mode === "custom") {
+            if (!MODEL_MODES.has(mode) || (mode === "custom" && !process.env.NVIDIA_MODEL)) {
                 responseJson(response, 400, { error: "Choose a supported model mode." });
                 return;
             }
@@ -713,6 +735,7 @@ export function createUiServer({
             });
             const agent = new Agent(model, {
                 workspaceManager,
+                projectBrief,
                 onEvent: ({ message, details }) => {
                     responseEvent(response, "progress", publicEvent(message, details));
                 },

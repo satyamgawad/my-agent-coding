@@ -8,3 +8,8 @@ coverage/
 
 # Generated apps and their local data belong on this computer, not in the agent source repository.
 projects/
+
+# Curated samples are versioned, but private source data and generated
+# fine-tuning artifacts must never be committed.
+training/build/
+training/private/
