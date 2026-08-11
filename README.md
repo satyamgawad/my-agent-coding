@@ -109,10 +109,12 @@ from using its normal retry and fallback behavior.
 After a task finishes, enter a follow-up instruction in the same box—for
 example, “change the dashboard to a light theme” or “add export to the active
 project.” The selected project remains active, and the dashboard keeps the last
-three task/outcome pairs for that project in memory so follow-up work has local
-conversation context. This session context is never written to task history or
-disk and is cleared when the dashboard restarts; project files, plans, and code
-retrieval remain the durable source of truth.
+twelve task/outcome pairs for that project in private local storage so follow-up
+work has conversation context after a dashboard restart. It records only your
+task and the final agent outcome—never hidden reasoning or tool output—and is
+kept separately from task history. Use **Clear conversation** in the dashboard
+to remove a project's saved transcript. Do not paste credentials into tasks;
+common `key=value` and `password: value` patterns are redacted before storage.
 
 ### Full-stack application building
 

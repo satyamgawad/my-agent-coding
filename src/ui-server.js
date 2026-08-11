@@ -237,7 +237,7 @@ export function createUiServer({
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
     const projectPlan = new ProjectPlan({ workspaceManager });
     const projectRunner = new ProjectRunner(workspaceManager);
-    const projectSession = new ProjectSession();
+    const projectSession = new ProjectSession({ workspaceManager });
     const taskHistory = new TaskHistory({ workspaceManager });
     const unavailableProfiles = new Map();
     let activeTask = null;
@@ -381,6 +381,71 @@ export function createUiServer({
                     progress: { completed: 0, total: 0 },
                     milestones: [],
                     message: "Project plan metadata is temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/projects/conversation") {
+            const project = workspaceManager.getContext().project;
+
+            if (!project) {
+                responseJson(response, 200, {
+                    state: "idle",
+                    project: null,
+                    turns: [],
+                    message: "Select a project to see its saved conversation.",
+                });
+                return;
+            }
+
+            try {
+                const turns = projectSession.recent(project);
+                responseJson(response, 200, {
+                    state: "ready",
+                    project,
+                    turns,
+                    message: turns.length > 0
+                        ? "Saved project conversation is available to follow-up tasks."
+                        : "Follow-up tasks for this project will appear here.",
+                });
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    project,
+                    turns: [],
+                    message: "Project conversation history is temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/projects/conversation/clear") {
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task to finish before clearing its conversation.",
+                });
+                return;
+            }
+
+            const project = workspaceManager.getContext().project;
+
+            if (!project) {
+                responseJson(response, 400, { error: "Select a project before clearing its conversation." });
+                return;
+            }
+
+            try {
+                projectSession.clear(project);
+                responseJson(response, 200, {
+                    state: "cleared",
+                    project,
+                    turns: [],
+                    message: "Saved conversation cleared for this project.",
+                });
+            } catch {
+                responseJson(response, 500, {
+                    error: "Project conversation history could not be cleared.",
                 });
             }
             return;
@@ -700,10 +765,15 @@ export function createUiServer({
                     cancelled: taskRecord.controller.signal.aborted,
                 });
             } finally {
-                projectSession.record(
-                    workspaceManager.getContext().project || projectAtStart,
-                    { task, outcome: taskResult }
-                );
+                try {
+                    projectSession.record(
+                        workspaceManager.getContext().project || projectAtStart,
+                        { task, outcome: taskResult }
+                    );
+                } catch {
+                    // Conversation storage is helpful for follow-ups but must
+                    // not change an already-completed task result.
+                }
                 try {
                     taskHistory.record({
                         createdAt: new Date(taskRecord.startedAt).toISOString(),

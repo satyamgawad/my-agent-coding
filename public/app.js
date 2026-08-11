@@ -29,6 +29,9 @@ const agentEvaluationPassRate = document.querySelector("#evaluation-pass-rate");
 const agentEvaluationResults = document.querySelector("#evaluation-results");
 const historySummary = document.querySelector("#history-summary");
 const historyList = document.querySelector("#history-list");
+const conversationSummary = document.querySelector("#conversation-summary");
+const conversationTurns = document.querySelector("#conversation-turns");
+const clearConversationButton = document.querySelector("#clear-conversation");
 const githubBadge = document.querySelector("#github-badge");
 const githubSummary = document.querySelector("#github-summary");
 const publishGitHubButton = document.querySelector("#publish-github");
@@ -107,6 +110,12 @@ let taskHistory = {
   records: [],
   message: "Loading local task history…",
 };
+let projectConversation = {
+  state: "idle",
+  project: null,
+  turns: [],
+  message: "Select a project to see its saved conversation.",
+};
 let githubStatus = {
   state: "loading",
   configured: false,
@@ -135,6 +144,7 @@ function setRunning(isRunning) {
   runButton.disabled = taskControlsDisabled;
   taskInput.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
+  clearConversationButton.disabled = taskControlsDisabled || !workspaceContext.project || projectConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
@@ -143,7 +153,7 @@ function setRunning(isRunning) {
     ? "The agent is working through the task and streaming its verified steps."
     : taskStatusKnown
       ? workspaceContext.project
-        ? `Ready for another instruction on ${workspaceContext.project}. Recent outcomes stay in this local session.`
+        ? `Ready for another instruction on ${workspaceContext.project}. Its saved conversation provides follow-up context.`
         : "Describe a new project or select one to continue it."
       : "Checking whether an earlier task is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
@@ -624,6 +634,92 @@ async function refreshTaskHistory() {
   renderTaskHistory();
 }
 
+function renderProjectConversation() {
+  conversationSummary.textContent = projectConversation.message
+    || "Project conversation history is temporarily unavailable.";
+  conversationTurns.textContent = "";
+  clearConversationButton.disabled = !workspaceContext.project || projectConversation.turns.length === 0 || Boolean(activeTaskId);
+
+  for (const turn of projectConversation.turns || []) {
+    for (const [speaker, content] of [["user", turn.task], ["agent", turn.outcome]]) {
+      const item = document.createElement("li");
+      item.className = `conversation-turn is-${speaker}`;
+      const label = document.createElement("strong");
+      label.textContent = speaker === "user" ? "YOU" : "AGENT";
+      const message = document.createElement("p");
+      message.textContent = content || "No message was saved.";
+      item.append(label, message);
+
+      if (speaker === "agent" && turn.completedAt) {
+        const completedAt = document.createElement("time");
+        completedAt.dateTime = turn.completedAt;
+        completedAt.textContent = historyDate(turn.completedAt);
+        item.append(completedAt);
+      }
+
+      conversationTurns.append(item);
+    }
+  }
+}
+
+async function refreshProjectConversation() {
+  const projectAtRequest = workspaceContext.project;
+
+  if (!projectAtRequest) {
+    projectConversation = {
+      state: "idle",
+      project: null,
+      turns: [],
+      message: "Select a project to see its saved conversation.",
+    };
+    renderProjectConversation();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/projects/conversation", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Project conversation history is unavailable.");
+    const conversation = await response.json();
+    if (workspaceContext.project !== projectAtRequest) return;
+    projectConversation = conversation;
+  } catch {
+    if (workspaceContext.project !== projectAtRequest) return;
+    projectConversation = {
+      state: "unavailable",
+      project: projectAtRequest,
+      turns: [],
+      message: "Project conversation history is temporarily unavailable.",
+    };
+  }
+
+  renderProjectConversation();
+}
+
+async function clearProjectConversation() {
+  if (clearConversationButton.disabled || !workspaceContext.project) return;
+
+  if (!window.confirm(`Clear the saved conversation for ${workspaceContext.project}? This cannot be undone.`)) {
+    return;
+  }
+
+  clearConversationButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/projects/conversation/clear", {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    const conversation = await response.json();
+    if (!response.ok) throw new Error(conversation.error || "Project conversation could not be cleared.");
+    projectConversation = conversation;
+    addActivity("Cleared project conversation", `Removed saved follow-up context for ${workspaceContext.project}.`);
+  } catch (error) {
+    addActivity("Could not clear conversation", error.message || "Try again in a moment.", "failed");
+  }
+
+  renderProjectConversation();
+}
+
 function renderGitHubStatus() {
   const ready = githubStatus.state === "ready" && githubStatus.configured && Boolean(workspaceContext.project);
   githubBadge.textContent = githubStatus.state === "ready" ? "Ready" : "Not configured";
@@ -920,6 +1016,7 @@ async function refreshContext() {
       refreshStaticPreviewStatus(),
       refreshProjectEvaluation(),
       refreshProjectPlan(),
+      refreshProjectConversation(),
       refreshGitHubStatus(),
     ]);
   } catch {
@@ -1169,6 +1266,7 @@ cancelButton.addEventListener("click", cancelTask);
 runEvaluationsButton.addEventListener("click", () => runAgentEvaluations());
 runLiveEvaluationsButton.addEventListener("click", () => runAgentEvaluations("live"));
 publishGitHubButton.addEventListener("click", publishGitHubProject);
+clearConversationButton.addEventListener("click", clearProjectConversation);
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {

@@ -66,7 +66,7 @@ h1 em { color: var(--acid); font-family: Georgia, "Times New Roman", serif; font
 .workbench, .observatory { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: 18px; }
 .observatory { grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); margin-top: 18px; }
 
-.task-card, .workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card {
+.task-card, .workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -75,7 +75,7 @@ h1 em { color: var(--acid); font-family: Georgia, "Times New Roman", serif; font
 }
 
 .task-card { padding: 25px; }
-.workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 23px; }
+.workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 23px; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .card-heading.compact { align-items: center; }
 .card-heading h2 { margin: 6px 0 0; font-size: 19px; letter-spacing: -.04em; }
@@ -248,6 +248,21 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .result-card.is-success .result-mark { color: var(--acid); }
 .result-card.is-error .result-mark { color: var(--coral); }
 
+.conversation-card { margin-top: 18px; }
+.conversation-clear { border: 1px solid rgba(255, 156, 122, .42); border-radius: 8px; padding: 8px 10px; color: var(--coral); background: rgba(255, 156, 122, .07); font-size: 11px; font-weight: 800; }
+.conversation-clear:hover:not(:disabled), .conversation-clear:focus-visible { border-color: var(--coral); background: rgba(255, 156, 122, .15); outline: none; }
+.conversation-clear:disabled { cursor: not-allowed; opacity: .45; }
+.conversation-summary { margin: 15px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.conversation-turns { display: grid; gap: 10px; max-height: 420px; margin: 15px 0 0; padding: 0; overflow: auto; list-style: none; }
+.conversation-turn { padding: 11px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px; background: rgba(0, 0, 0, .1); }
+.conversation-turn.is-user { border-color: rgba(216, 252, 106, .24); }
+.conversation-turn.is-agent { border-color: rgba(137, 229, 206, .22); }
+.conversation-turn strong { display: block; color: var(--aqua); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; letter-spacing: .05em; }
+.conversation-turn.is-user strong { color: var(--acid); }
+.conversation-turn p { margin: 6px 0 0; color: var(--ink); font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+.conversation-turn time { display: block; margin-top: 7px; color: #858d83; font-size: 10px; }
+.conversation-scope { margin: 12px 0 0; color: #858d83; font-size: 10px; line-height: 1.45; }
+
 .agent-evaluation-card { margin-top: 18px; }
 .evaluation-run-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .evaluation-run-button { border: 1px solid rgba(137, 229, 206, .5); border-radius: 8px; padding: 8px 10px; color: var(--aqua); background: rgba(137, 229, 206, .08); font-size: 11px; font-weight: 800; }
@@ -293,7 +308,7 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
   .shell { width: min(100% - 28px, 560px); padding-top: 16px; }
   .intro { padding: 54px 0 35px; }
   .workbench, .observatory { grid-template-columns: 1fr; }
-  .task-card, .workspace-card, .activity-card, .result-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 19px; border-radius: 14px; }
+  .task-card, .workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 19px; border-radius: 14px; }
   .task-footer { align-items: flex-start; flex-direction: column; }
   .task-actions { width: 100%; }
   .run-button, .cancel-button { flex: 1; }

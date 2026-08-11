@@ -93,7 +93,7 @@ export async function runOneTask(agent, task, { sessionContext } = {}) {
 
 async function runInteractive(agent) {
     const terminal = createInterface({ input: stdin, output: stdout });
-    const projectSession = new ProjectSession();
+    const projectSession = new ProjectSession({ workspaceManager: agent.workspaceManager });
     let interrupted = false;
     console.log("🤖 My Coding Agent");
     console.log("Describe a coding task. Type exit or quit when you are finished.\n");

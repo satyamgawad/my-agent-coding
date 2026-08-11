@@ -171,6 +171,19 @@
         </article>
       </section>
 
+      <section class="conversation-card" aria-labelledby="conversation-title">
+        <div class="card-heading compact">
+          <div>
+            <p class="eyebrow">PROJECT CONVERSATION</p>
+            <h2 id="conversation-title">Continue where you left off</h2>
+          </div>
+          <button class="conversation-clear" id="clear-conversation" type="button" disabled>Clear conversation</button>
+        </div>
+        <p class="conversation-summary" id="conversation-summary" aria-live="polite">Select a project to see its saved conversation.</p>
+        <ol class="conversation-turns" id="conversation-turns" aria-label="Saved project conversation"></ol>
+        <p class="conversation-scope">Saved privately for this project: your task and the final agent outcome only. It never includes hidden reasoning or tool output.</p>
+      </section>
+
       <section class="agent-evaluation-card" aria-labelledby="agent-evaluation-title">
         <div class="card-heading compact">
           <div>
