@@ -110,20 +110,51 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     });
     assert.equal(followUp.status, 200);
     await followUp.text();
-    assert.match(modelPrompts[1], /Recent saved project conversation/);
+    assert.match(modelPrompts[1], /Recent saved agent conversation/);
     assert.match(modelPrompts[1], /Say hello/);
     assert.match(modelPrompts[1], /The task is complete/);
 
-    const conversation = await fetch(`${baseUrl}/api/projects/conversation`);
+    const conversation = await fetch(`${baseUrl}/api/conversation`);
     const conversationBody = await conversation.json();
     assert.equal(conversationBody.state, "ready");
-    assert.equal(conversationBody.project, "notes-app");
     assert.equal(conversationBody.turns.length, 2);
     assert.equal(conversationBody.turns[0].task, "Say hello.");
 
-    const cleared = await fetch(`${baseUrl}/api/projects/conversation/clear`, { method: "POST" });
+    const cleared = await fetch(`${baseUrl}/api/conversation/clear`, { method: "POST" });
     assert.equal(cleared.status, 200);
     assert.deepEqual((await cleared.json()).turns, []);
+});
+
+test("the dashboard saves an ongoing agent conversation before a project exists", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate() {
+                return { content: "A project is not needed for this answer." };
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Explain the available tools." }),
+    });
+    assert.equal(task.status, 200);
+    await task.text();
+
+    const conversation = await fetch(`${baseUrl}/api/conversation`);
+    assert.deepEqual((await conversation.json()).turns.map(({ task: prompt, outcome }) => ({ prompt, outcome })), [{
+        prompt: "Explain the available tools.",
+        outcome: "A project is not needed for this answer.",
+    }]);
 });
 
 test("the dashboard exposes configured GitHub publishing only after repository confirmation", async (t) => {
@@ -678,14 +709,14 @@ test("the dashboard renders private milestone progress for large projects", () =
     assert.match(script, /renderProjectPlan/);
 });
 
-test("the dashboard renders and clears a saved project conversation", () => {
+test("the dashboard renders and clears the saved agent conversation", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
-    assert.match(page, /PROJECT CONVERSATION/);
+    assert.match(page, /AGENT CONVERSATION/);
     assert.match(page, /id="conversation-turns"/);
     assert.match(page, /id="clear-conversation"/);
-    assert.match(script, /\/api\/projects\/conversation/);
+    assert.match(script, /\/api\/conversation/);
     assert.match(script, /clearProjectConversation/);
 });
 

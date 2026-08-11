@@ -9,6 +9,8 @@ const MAX_OUTCOME_CHARS = 1_600;
 const MAX_FILE_BYTES = 128 * 1024;
 const SECRET_ASSIGNMENT = /\b(api[_-]?key|access[_-]?token|client[_-]?secret|password|secret)\s*([:=])\s*([^\s,;]+)/gi;
 
+export const AGENT_CONVERSATION_ID = "agent-chat";
+
 function sessionError(message, code) {
     const error = new Error(message);
     error.code = code;
@@ -54,10 +56,10 @@ function validTurn(turn) {
 }
 
 /**
- * Stores a small, project-scoped conversation transcript outside generated
- * source. It contains only the user's task and the final agent outcome—never
- * hidden reasoning or tool output—and stays bounded so later prompts remain
- * focused. A caller can omit workspaceManager for short-lived in-memory use.
+ * Stores a small named conversation transcript outside generated source. It
+ * contains only the user's task and the final agent outcome—never hidden
+ * reasoning or tool output—and stays bounded so later prompts remain focused.
+ * A caller can omit workspaceManager for short-lived in-memory use.
  */
 export default class ProjectSession {
     constructor({ workspaceManager, maxTurns = MAX_TURNS, now = () => new Date() } = {}) {

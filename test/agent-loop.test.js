@@ -575,7 +575,7 @@ test("agent uses bounded prior project outcomes for a follow-up task", async (t)
         }),
         "Updated the active project."
     );
-    assert.match(prompts[0], /Recent saved project conversation/);
+    assert.match(prompts[0], /Recent saved agent conversation/);
     assert.match(prompts[0], /Create a dark portfolio/);
     assert.match(prompts[0], /untrusted prior user\/model content/);
 });

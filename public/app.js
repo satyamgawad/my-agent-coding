@@ -112,9 +112,8 @@ let taskHistory = {
 };
 let projectConversation = {
   state: "idle",
-  project: null,
   turns: [],
-  message: "Select a project to see its saved conversation.",
+  message: "Your tasks and final agent responses will appear here.",
 };
 let githubStatus = {
   state: "loading",
@@ -144,7 +143,7 @@ function setRunning(isRunning) {
   runButton.disabled = taskControlsDisabled;
   taskInput.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
-  clearConversationButton.disabled = taskControlsDisabled || !workspaceContext.project || projectConversation.turns.length === 0;
+  clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
@@ -153,7 +152,7 @@ function setRunning(isRunning) {
     ? "The agent is working through the task and streaming its verified steps."
     : taskStatusKnown
       ? workspaceContext.project
-        ? `Ready for another instruction on ${workspaceContext.project}. Its saved conversation provides follow-up context.`
+        ? `Ready for another instruction on ${workspaceContext.project}. The saved conversation provides follow-up context.`
         : "Describe a new project or select one to continue it."
       : "Checking whether an earlier task is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
@@ -636,9 +635,9 @@ async function refreshTaskHistory() {
 
 function renderProjectConversation() {
   conversationSummary.textContent = projectConversation.message
-    || "Project conversation history is temporarily unavailable.";
+    || "Agent conversation history is temporarily unavailable.";
   conversationTurns.textContent = "";
-  clearConversationButton.disabled = !workspaceContext.project || projectConversation.turns.length === 0 || Boolean(activeTaskId);
+  clearConversationButton.disabled = projectConversation.turns.length === 0 || Boolean(activeTaskId);
 
   for (const turn of projectConversation.turns || []) {
     for (const [speaker, content] of [["user", turn.task], ["agent", turn.outcome]]) {
@@ -663,32 +662,16 @@ function renderProjectConversation() {
 }
 
 async function refreshProjectConversation() {
-  const projectAtRequest = workspaceContext.project;
-
-  if (!projectAtRequest) {
-    projectConversation = {
-      state: "idle",
-      project: null,
-      turns: [],
-      message: "Select a project to see its saved conversation.",
-    };
-    renderProjectConversation();
-    return;
-  }
-
   try {
-    const response = await fetch("/api/projects/conversation", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error("Project conversation history is unavailable.");
+    const response = await fetch("/api/conversation", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Agent conversation history is unavailable.");
     const conversation = await response.json();
-    if (workspaceContext.project !== projectAtRequest) return;
     projectConversation = conversation;
   } catch {
-    if (workspaceContext.project !== projectAtRequest) return;
     projectConversation = {
       state: "unavailable",
-      project: projectAtRequest,
       turns: [],
-      message: "Project conversation history is temporarily unavailable.",
+      message: "Agent conversation history is temporarily unavailable.",
     };
   }
 
@@ -696,23 +679,23 @@ async function refreshProjectConversation() {
 }
 
 async function clearProjectConversation() {
-  if (clearConversationButton.disabled || !workspaceContext.project) return;
+  if (clearConversationButton.disabled) return;
 
-  if (!window.confirm(`Clear the saved conversation for ${workspaceContext.project}? This cannot be undone.`)) {
+  if (!window.confirm("Clear the saved agent conversation? This cannot be undone.")) {
     return;
   }
 
   clearConversationButton.disabled = true;
 
   try {
-    const response = await fetch("/api/projects/conversation/clear", {
+    const response = await fetch("/api/conversation/clear", {
       method: "POST",
       headers: { accept: "application/json" },
     });
     const conversation = await response.json();
-    if (!response.ok) throw new Error(conversation.error || "Project conversation could not be cleared.");
+    if (!response.ok) throw new Error(conversation.error || "Agent conversation could not be cleared.");
     projectConversation = conversation;
-    addActivity("Cleared project conversation", `Removed saved follow-up context for ${workspaceContext.project}.`);
+    addActivity("Cleared agent conversation", "Removed saved follow-up context for this dashboard.");
   } catch (error) {
     addActivity("Could not clear conversation", error.message || "Try again in a moment.", "failed");
   }

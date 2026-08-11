@@ -13,7 +13,7 @@ import ProjectArtifacts from "./project-artifacts.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
-import ProjectSession from "./project-session.js";
+import ProjectSession, { AGENT_CONVERSATION_ID } from "./project-session.js";
 import TaskHistory from "./task-history.js";
 import WorkspaceManager from "./workspace.js";
 
@@ -386,66 +386,44 @@ export function createUiServer({
             return;
         }
 
-        if (request.method === "GET" && url.pathname === "/api/projects/conversation") {
-            const project = workspaceManager.getContext().project;
-
-            if (!project) {
-                responseJson(response, 200, {
-                    state: "idle",
-                    project: null,
-                    turns: [],
-                    message: "Select a project to see its saved conversation.",
-                });
-                return;
-            }
-
+        if (request.method === "GET" && url.pathname === "/api/conversation") {
             try {
-                const turns = projectSession.recent(project);
+                const turns = projectSession.recent(AGENT_CONVERSATION_ID);
                 responseJson(response, 200, {
                     state: "ready",
-                    project,
                     turns,
                     message: turns.length > 0
-                        ? "Saved project conversation is available to follow-up tasks."
-                        : "Follow-up tasks for this project will appear here.",
+                        ? "Saved agent conversation is available to follow-up tasks."
+                        : "Your tasks and final agent responses will appear here.",
                 });
             } catch {
                 responseJson(response, 200, {
                     state: "unavailable",
-                    project,
                     turns: [],
-                    message: "Project conversation history is temporarily unavailable.",
+                    message: "Agent conversation history is temporarily unavailable.",
                 });
             }
             return;
         }
 
-        if (request.method === "POST" && url.pathname === "/api/projects/conversation/clear") {
+        if (request.method === "POST" && url.pathname === "/api/conversation/clear") {
             if (activeTask) {
                 responseJson(response, 409, {
-                    error: "Wait for the active task to finish before clearing its conversation.",
+                    error: "Wait for the active task to finish before clearing the conversation.",
                 });
-                return;
-            }
-
-            const project = workspaceManager.getContext().project;
-
-            if (!project) {
-                responseJson(response, 400, { error: "Select a project before clearing its conversation." });
                 return;
             }
 
             try {
-                projectSession.clear(project);
+                projectSession.clear(AGENT_CONVERSATION_ID);
                 responseJson(response, 200, {
                     state: "cleared",
-                    project,
                     turns: [],
-                    message: "Saved conversation cleared for this project.",
+                    message: "Saved agent conversation cleared.",
                 });
             } catch {
                 responseJson(response, 500, {
-                    error: "Project conversation history could not be cleared.",
+                    error: "Agent conversation history could not be cleared.",
                 });
             }
             return;
@@ -742,12 +720,11 @@ export function createUiServer({
 
             let taskSucceeded = false;
             let taskResult = null;
-            const projectAtStart = workspaceManager.getContext().project;
 
             try {
                 const result = await agent.run(task, {
                     signal: taskRecord.controller.signal,
-                    sessionContext: projectSession.recent(projectAtStart),
+                    sessionContext: projectSession.recent(AGENT_CONVERSATION_ID),
                 });
                 taskResult = result;
                 taskSucceeded = !isTaskFailure(result);
@@ -767,7 +744,7 @@ export function createUiServer({
             } finally {
                 try {
                     projectSession.record(
-                        workspaceManager.getContext().project || projectAtStart,
+                        AGENT_CONVERSATION_ID,
                         { task, outcome: taskResult }
                     );
                 } catch {

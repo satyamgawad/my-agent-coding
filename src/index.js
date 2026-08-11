@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import Agent from "./agent.js";
 import ModelRouter from "./model-router.js";
 import Nemotron from "./nemotron.js";
-import ProjectSession from "./project-session.js";
+import ProjectSession, { AGENT_CONVERSATION_ID } from "./project-session.js";
 import WorkspaceManager from "./workspace.js";
 
 const TOOL_PROGRESS = {
@@ -127,12 +127,11 @@ async function runInteractive(agent) {
                 break;
             }
 
-            const projectAtStart = agent.workspaceManager?.getContext().project;
             const result = await runOneTask(agent, task, {
-                sessionContext: projectSession.recent(projectAtStart),
+                sessionContext: projectSession.recent(AGENT_CONVERSATION_ID),
             });
             projectSession.record(
-                agent.workspaceManager?.getContext().project || projectAtStart,
+                AGENT_CONVERSATION_ID,
                 { task, outcome: result }
             );
             console.log("");
