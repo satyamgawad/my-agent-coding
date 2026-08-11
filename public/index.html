@@ -148,9 +148,12 @@
                 <p class="muted-label">SMART MODE BRIEF</p>
                 <h3 id="project-brief-title">Project handoff</h3>
               </div>
+              <button class="panel-toggle" type="button" data-panel-toggle="project-brief-content" aria-expanded="true">Collapse</button>
             </div>
-            <p class="brief-summary" id="brief-summary" aria-live="polite">Select Smart mode to save a compact handoff for this project.</p>
-            <dl class="brief-details" id="brief-details"></dl>
+            <div class="collapsible-content" id="project-brief-content">
+              <p class="brief-summary" id="brief-summary" aria-live="polite">Select Smart mode to save a compact handoff for this project.</p>
+              <dl class="brief-details" id="brief-details"></dl>
+            </div>
           </section>
         </aside>
       </section>
@@ -164,12 +167,22 @@
             </div>
             <span class="activity-state" id="activity-state">Ready</span>
           </div>
+          <div class="activity-overview" aria-live="polite">
+            <span class="activity-count" id="activity-count">0 updates</span>
+            <span class="activity-note" id="activity-note">Waiting for the next task.</span>
+          </div>
           <ol class="activity-list" id="activity-list" aria-live="polite">
             <li class="activity-item is-idle">
               <span class="activity-icon" aria-hidden="true">·</span>
               <div><strong>Waiting for a task</strong><p>Tool activity will appear here.</p></div>
             </li>
           </ol>
+          <section class="file-change-feed" aria-labelledby="file-change-title">
+            <p class="muted-label" id="file-change-title">LIVE FILE CHANGES</p>
+            <ul id="file-change-list" aria-live="polite">
+              <li class="file-change-empty">Verified file updates will appear here.</li>
+            </ul>
+          </section>
         </article>
 
         <article class="result-card" aria-labelledby="result-title">
@@ -190,11 +203,16 @@
             <p class="eyebrow">AGENT CONVERSATION</p>
             <h2 id="conversation-title">Continue where you left off</h2>
           </div>
-          <button class="conversation-clear" id="clear-conversation" type="button" disabled>Clear conversation</button>
+          <div class="panel-actions">
+            <button class="panel-toggle" type="button" data-panel-toggle="conversation-content" aria-expanded="true">Collapse</button>
+            <button class="conversation-clear" id="clear-conversation" type="button" disabled>Clear conversation</button>
+          </div>
         </div>
-        <p class="conversation-summary" id="conversation-summary" aria-live="polite">Your tasks and final agent responses will appear here.</p>
-        <ol class="conversation-turns" id="conversation-turns" aria-label="Saved agent conversation"></ol>
-        <p class="conversation-scope">Saved privately: your task and the final agent outcome only. It never includes hidden reasoning or tool output.</p>
+        <div class="collapsible-content" id="conversation-content">
+          <p class="conversation-summary" id="conversation-summary" aria-live="polite">Your tasks and final agent responses will appear here.</p>
+          <ol class="conversation-turns" id="conversation-turns" aria-label="Saved agent conversation"></ol>
+          <p class="conversation-scope">Saved privately: your task and the final agent outcome only. It never includes hidden reasoning or tool output.</p>
+        </div>
       </section>
 
       <section class="agent-evaluation-card" aria-labelledby="agent-evaluation-title">
@@ -241,6 +259,8 @@
         <p class="github-scope">Publishes only safe project source after confirmation. It never sends environment files, dependencies, keys, Git data, or deletes remote files.</p>
       </section>
     </main>
+
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
 
     <script type="module" src="/app.js"></script>
   </body>

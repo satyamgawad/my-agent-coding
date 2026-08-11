@@ -815,6 +815,20 @@ test("the dashboard opens generated static previews in a new tab", () => {
     assert.match(script, /\/api\/projects\/delete/);
 });
 
+test("the dashboard renders live activity, file updates, expandable context, and notifications", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /id="activity-count"/);
+    assert.match(page, /id="file-change-list"/);
+    assert.match(page, /id="toast-region"/);
+    assert.match(page, /data-panel-toggle="conversation-content"/);
+    assert.match(page, /data-panel-toggle="project-brief-content"/);
+    assert.match(script, /function addFileChange/);
+    assert.match(script, /function showToast/);
+    assert.match(script, /FILE_CHANGE_TOOLS/);
+});
+
 test("the dashboard deletes only the selected local project after exact confirmation", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     fs.mkdirSync(path.join(root, "projects", "delete-me"), { recursive: true });

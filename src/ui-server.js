@@ -121,6 +121,11 @@ function publicEvent(message, details) {
         message,
         ok: details?.ok ?? true,
         tool: details?.tool ?? null,
+        filePath: typeof details?.filePath === "string" &&
+            details.filePath.length <= 240 &&
+            !details.filePath.includes("\0")
+            ? details.filePath
+            : null,
         error: details?.error
             ? {
                 code: details.error.code,

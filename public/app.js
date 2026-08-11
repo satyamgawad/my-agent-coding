@@ -7,6 +7,7 @@ const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
 const modelHealth = document.querySelector("#model-health");
 const connection = document.querySelector("#connection");
+const activeProjectCard = document.querySelector("#active-project");
 const activeProject = document.querySelector("#active-project strong");
 const projectCount = document.querySelector("#project-count");
 const projectList = document.querySelector("#project-list");
@@ -40,6 +41,10 @@ const githubSummary = document.querySelector("#github-summary");
 const publishGitHubButton = document.querySelector("#publish-github");
 const activityList = document.querySelector("#activity-list");
 const activityState = document.querySelector("#activity-state");
+const activityCount = document.querySelector("#activity-count");
+const activityNote = document.querySelector("#activity-note");
+const fileChangeList = document.querySelector("#file-change-list");
+const toastRegion = document.querySelector("#toast-region");
 const resultCard = document.querySelector(".result-card");
 const resultTitle = document.querySelector("#result-title");
 const resultText = document.querySelector("#result-text");
@@ -143,6 +148,10 @@ const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
 const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/preview/status"];
 const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
+const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
+const MAX_FILE_CHANGE_ITEMS = 5;
+
+let activityEntries = 0;
 
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
@@ -272,6 +281,10 @@ async function refreshActiveTask({ announce = false, replaceActivity = false, an
 
 function clearActivity() {
   activityList.textContent = "";
+  activityEntries = 0;
+  activityCount.textContent = "0 updates";
+  activityNote.textContent = "Waiting for the next task.";
+  clearFileChanges();
 }
 
 function addActivity(title, description = "", kind = "") {
@@ -294,9 +307,70 @@ function addActivity(title, description = "", kind = "") {
     copy.append(detail);
   }
 
+  const timestamp = document.createElement("time");
+  const now = new Date();
+  timestamp.dateTime = now.toISOString();
+  timestamp.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  copy.append(timestamp);
+
   item.append(icon, copy);
   activityList.append(item);
   activityList.scrollTop = activityList.scrollHeight;
+  activityEntries += 1;
+  activityCount.textContent = `${activityEntries} update${activityEntries === 1 ? "" : "s"}`;
+  activityNote.textContent = kind === "failed" ? "Action needs attention." : title;
+}
+
+function clearFileChanges() {
+  fileChangeList.textContent = "";
+  const empty = document.createElement("li");
+  empty.className = "file-change-empty";
+  empty.textContent = "Verified file updates will appear here.";
+  fileChangeList.append(empty);
+}
+
+function addFileChange(tool, filePath) {
+  if (!FILE_CHANGE_TOOLS.has(tool) || typeof filePath !== "string" || !filePath) return;
+
+  const empty = fileChangeList.querySelector(".file-change-empty");
+  if (empty) empty.remove();
+
+  const item = document.createElement("li");
+  item.className = "file-change-item";
+  const action = document.createElement("strong");
+  action.textContent = tool === "writeFile" || tool === "writeAgentSource" ? "Created or replaced" : "Updated";
+  const file = document.createElement("span");
+  file.textContent = filePath;
+  item.append(action, file);
+  fileChangeList.prepend(item);
+
+  while (fileChangeList.children.length > MAX_FILE_CHANGE_ITEMS) {
+    fileChangeList.lastElementChild?.remove();
+  }
+}
+
+function showToast(message, kind = "info") {
+  const toast = document.createElement("div");
+  toast.className = `toast is-${kind}`;
+  toast.setAttribute("role", kind === "error" ? "alert" : "status");
+
+  const text = document.createElement("span");
+  text.textContent = message;
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.textContent = "×";
+  toast.append(text, dismiss);
+
+  const removeToast = () => toast.remove();
+  dismiss.addEventListener("click", removeToast);
+  toastRegion.append(toast);
+
+  while (toastRegion.children.length > 3) {
+    toastRegion.firstElementChild?.remove();
+  }
+
+  window.setTimeout(removeToast, 5_000);
 }
 
 function showResult(text, ok) {
@@ -305,6 +379,7 @@ function showResult(text, ok) {
   resultTitle.textContent = ok ? "Task complete" : "Task needs attention";
   resultMark.textContent = ok ? "✦" : "!";
   resultText.textContent = text;
+  showToast(ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
 }
 
 function showRequestError(message, title = "Could not start the task") {
@@ -352,6 +427,55 @@ function renderProjectRunner() {
 
   runnerStatus.textContent = `Run ${workspaceContext.project} in a local browser tab.`;
   openProject.hidden = true;
+}
+
+function projectCardStatus(project) {
+  if (project !== workspaceContext.project) {
+    return "Select to inspect";
+  }
+
+  if (projectEvaluation.state === "ready" || typeof projectEvaluation.score === "number") {
+    return `Active · ${projectEvaluation.score ?? 0}/100 ready`;
+  }
+
+  return "Active workspace";
+}
+
+function renderProjectList() {
+  const projects = workspaceContext.projects || [];
+  projectList.textContent = "";
+
+  if (projects.length === 0) {
+    const item = document.createElement("li");
+    item.className = "empty-state";
+    item.textContent = "Projects you create will appear here.";
+    projectList.append(item);
+    return;
+  }
+
+  for (const project of projects) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const isActive = project === workspaceContext.project;
+    button.type = "button";
+    button.className = "project-card-button";
+    button.disabled = !taskStatusKnown || Boolean(activeTaskId);
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-label", `${isActive ? "Active project" : "Open project"}: ${project}`);
+
+    const name = document.createElement("strong");
+    name.textContent = project;
+    const meta = document.createElement("span");
+    meta.className = "project-card-meta";
+    meta.textContent = projectCardStatus(project);
+    const action = document.createElement("span");
+    action.className = "project-card-action";
+    action.textContent = isActive ? "Current" : "Open";
+    button.append(name, meta, action);
+    button.addEventListener("click", () => selectProject(project));
+    item.append(button);
+    projectList.append(item);
+  }
 }
 
 function safeStaticPreviewUrl(candidate) {
@@ -453,6 +577,8 @@ function renderProjectEvaluation() {
     item.append(copy);
     evaluationChecks.append(item);
   }
+
+  renderProjectList();
 }
 
 function renderProjectPlan() {
@@ -1024,27 +1150,9 @@ async function refreshContext() {
     const projects = context.projects || [];
     projectCount.textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
     activeProject.textContent = context.project || "No project selected";
+    activeProjectCard.classList.toggle("has-project", Boolean(context.project));
     deleteProjectButton.disabled = !context.project || !taskStatusKnown || Boolean(activeTaskId);
-    projectList.textContent = "";
-
-    if (projects.length === 0) {
-      const item = document.createElement("li");
-      item.className = "empty-state";
-      item.textContent = "Projects you create will appear here.";
-      projectList.append(item);
-    } else {
-      for (const project of projects) {
-        const item = document.createElement("li");
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = project;
-        button.disabled = !taskStatusKnown || Boolean(activeTaskId);
-        button.classList.toggle("is-active", project === context.project);
-        button.addEventListener("click", () => selectProject(project));
-        item.append(button);
-        projectList.append(item);
-      }
-    }
+    renderProjectList();
 
     await Promise.all([
       refreshProjectStatus(),
@@ -1110,6 +1218,7 @@ async function deleteActiveProject() {
     await refreshContext();
     await refreshTaskHistory();
     addActivity(`Deleted ${project}`, "Its local source files and saved project handoff were removed.");
+    showToast(`${project} was deleted from this device.`, "success");
   } catch (error) {
     showRequestError(error.message || "The project could not be deleted.", "Could not delete project");
   } finally {
@@ -1138,6 +1247,7 @@ async function toggleProjectRunner() {
       isRunning ? "Stopped the project preview" : "Project preview is running",
       isRunning ? "The local app has stopped." : `Open ${body.url} to use it.`
     );
+    showToast(isRunning ? "Local project preview stopped." : "Local project preview is running.", "success");
   } catch (error) {
     showRequestError(error.message || "The project preview could not be started.");
   } finally {
@@ -1148,7 +1258,9 @@ async function toggleProjectRunner() {
 function handleProgress(event) {
   if (event.tool) {
     const label = toolLabels[event.tool] || event.tool;
-    addActivity(label, event.error?.message || "Verified by the local workspace.", event.ok ? "" : "failed");
+    const fileDetail = event.filePath ? `${event.filePath} · verified by the local workspace.` : "Verified by the local workspace.";
+    addActivity(label, event.error?.message || fileDetail, event.ok ? "" : "failed");
+    if (event.ok) addFileChange(event.tool, event.filePath);
     return;
   }
 
@@ -1353,6 +1465,17 @@ runEvaluationsButton.addEventListener("click", () => runAgentEvaluations());
 runLiveEvaluationsButton.addEventListener("click", () => runAgentEvaluations("live"));
 publishGitHubButton.addEventListener("click", publishGitHubProject);
 clearConversationButton.addEventListener("click", clearProjectConversation);
+
+for (const toggle of document.querySelectorAll("[data-panel-toggle]")) {
+  toggle.addEventListener("click", () => {
+    const content = document.querySelector(`#${toggle.dataset.panelToggle}`);
+    if (!content) return;
+    const expanded = toggle.getAttribute("aria-expanded") === "true";
+    content.hidden = expanded;
+    toggle.setAttribute("aria-expanded", String(!expanded));
+    toggle.textContent = expanded ? "Expand" : "Collapse";
+  });
+}
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {

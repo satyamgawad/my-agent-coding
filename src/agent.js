@@ -811,7 +811,12 @@ export default class Agent {
 
             latestResult = result;
             completed.push(resultSummary(result));
-            this.report(`${result.tool}: ${result.ok ? "ok" : "failed"}`, result);
+            this.report(`${result.tool}: ${result.ok ? "ok" : "failed"}`, {
+                ...result,
+                filePath: typeof decision.arguments?.filePath === "string"
+                    ? decision.arguments.filePath
+                    : null,
+            });
 
             const verificationTool = MODIFICATION_TOOLS.get(result.tool);
 
