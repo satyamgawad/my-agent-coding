@@ -142,7 +142,9 @@ function setRunning(isRunning) {
   taskHint.textContent = isRunning
     ? "The agent is working through the task and streaming its verified steps."
     : taskStatusKnown
-      ? "The agent verifies each change before it reports success."
+      ? workspaceContext.project
+        ? `Ready for another instruction on ${workspaceContext.project}. Recent outcomes stay in this local session.`
+        : "Describe a new project or select one to continue it."
       : "Checking whether an earlier task is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
   activityState.classList.toggle("is-working", isRunning);
@@ -1079,6 +1081,8 @@ async function runTask(task) {
       throw new Error("The task stream ended before the agent returned a result.");
     }
     await refreshContext();
+    taskInput.value = "";
+    taskInput.focus();
   } catch (error) {
     if (taskStarted) {
       recoveredTask = await refreshActiveTask({ announce: true });

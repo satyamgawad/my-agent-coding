@@ -560,6 +560,26 @@ test("agent supplies relevant safe project context for existing-project tasks", 
     assert.doesNotMatch(prompts[0], /private-value|NVIDIA_API_KEY/);
 });
 
+test("agent uses bounded prior project outcomes for a follow-up task", async (t) => {
+    const { workspaceManager, tools } = createTestWorkspace(t);
+    workspaceManager.createProject("Follow Up");
+    const prompts = [];
+    const agent = new Agent(
+        scriptedModel([{ content: "Updated the active project." }], prompts),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Change the heading color.", {
+            sessionContext: [{ task: "Create a dark portfolio.", outcome: "Created the portfolio." }],
+        }),
+        "Updated the active project."
+    );
+    assert.match(prompts[0], /Recent in-memory project conversation/);
+    assert.match(prompts[0], /Create a dark portfolio/);
+    assert.match(prompts[0], /untrusted prior user\/model content/);
+});
+
 test("agent does not retrieve an old project when the task creates a new application", async (t) => {
     const { root, workspaceManager, tools } = createTestWorkspace(t);
     workspaceManager.createProject("Old Project");

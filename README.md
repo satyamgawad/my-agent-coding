@@ -106,6 +106,14 @@ The dashboard also checks whether its configured model routes are currently
 available. A status-check problem does not expose your key or prevent a task
 from using its normal retry and fallback behavior.
 
+After a task finishes, enter a follow-up instruction in the same box—for
+example, “change the dashboard to a light theme” or “add export to the active
+project.” The selected project remains active, and the dashboard keeps the last
+three task/outcome pairs for that project in memory so follow-up work has local
+conversation context. This session context is never written to task history or
+disk and is cleared when the dashboard restarts; project files, plans, and code
+retrieval remain the durable source of truth.
+
 ### Full-stack application building
 
 The agent is trained to build applications with a database, authentication,

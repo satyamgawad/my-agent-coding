@@ -13,6 +13,7 @@ import ProjectArtifacts from "./project-artifacts.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
+import ProjectSession from "./project-session.js";
 import TaskHistory from "./task-history.js";
 import WorkspaceManager from "./workspace.js";
 
@@ -236,6 +237,7 @@ export function createUiServer({
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
     const projectPlan = new ProjectPlan({ workspaceManager });
     const projectRunner = new ProjectRunner(workspaceManager);
+    const projectSession = new ProjectSession();
     const taskHistory = new TaskHistory({ workspaceManager });
     const unavailableProfiles = new Map();
     let activeTask = null;
@@ -674,9 +676,15 @@ export function createUiServer({
             });
 
             let taskSucceeded = false;
+            let taskResult = null;
+            const projectAtStart = workspaceManager.getContext().project;
 
             try {
-                const result = await agent.run(task, { signal: taskRecord.controller.signal });
+                const result = await agent.run(task, {
+                    signal: taskRecord.controller.signal,
+                    sessionContext: projectSession.recent(projectAtStart),
+                });
+                taskResult = result;
                 taskSucceeded = !isTaskFailure(result);
                 responseEvent(response, "result", {
                     ok: taskSucceeded,
@@ -685,12 +693,17 @@ export function createUiServer({
                     cancelled: taskRecord.controller.signal.aborted,
                 });
             } catch (error) {
+                taskResult = `❌ The agent could not complete this task: ${error.message || String(error)}`;
                 responseEvent(response, "result", {
                     ok: false,
-                    result: `❌ The agent could not complete this task: ${error.message || String(error)}`,
+                    result: taskResult,
                     cancelled: taskRecord.controller.signal.aborted,
                 });
             } finally {
+                projectSession.record(
+                    workspaceManager.getContext().project || projectAtStart,
+                    { task, outcome: taskResult }
+                );
                 try {
                     taskHistory.record({
                         createdAt: new Date(taskRecord.startedAt).toISOString(),

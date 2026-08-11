@@ -22,10 +22,12 @@ function toolCall(tool, argumentsValue = {}) {
 
 test("the local UI serves its workspace context and streams agent outcomes", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const modelPrompts = [];
     const server = createUiServer({
         agentRoot: root,
         createModel: () => ({
-            async generate() {
+            async generate(prompt) {
+                modelPrompts.push(prompt);
                 return { content: "The task is complete." };
             },
         }),
@@ -100,6 +102,17 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.equal(historyBody.records[0].project, "notes-app");
     assert.equal(historyBody.records[0].model, "Nemotron 3 Nano");
     assert.equal(Object.hasOwn(historyBody.records[0], "task"), false);
+
+    const followUp = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Change the greeting." }),
+    });
+    assert.equal(followUp.status, 200);
+    await followUp.text();
+    assert.match(modelPrompts[1], /Recent in-memory project conversation/);
+    assert.match(modelPrompts[1], /Say hello/);
+    assert.match(modelPrompts[1], /The task is complete/);
 });
 
 test("the dashboard exposes configured GitHub publishing only after repository confirmation", async (t) => {

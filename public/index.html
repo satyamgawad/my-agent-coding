@@ -30,14 +30,14 @@
         <form class="task-card" id="task-form">
           <div class="card-heading">
             <div>
-              <p class="eyebrow">NEW TASK</p>
-              <h2>What should we make?</h2>
+              <p class="eyebrow">NEW OR FOLLOW-UP</p>
+              <h2>What should we change?</h2>
             </div>
             <span class="shortcut">⌘ ↵</span>
           </div>
 
           <label class="sr-only" for="task-input">Describe a coding task</label>
-          <textarea id="task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site with a dark mode and focused tests." autofocus disabled></textarea>
+          <textarea id="task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site — or tell the active project what to change next." autofocus disabled></textarea>
 
           <div class="model-control">
             <div>
@@ -64,7 +64,7 @@
           </div>
 
           <div class="task-footer">
-            <p id="task-hint">The agent verifies each change before it reports success.</p>
+            <p id="task-hint">After a task completes, send a follow-up instruction for the active project.</p>
             <div class="task-actions">
               <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel task</button>
               <button class="run-button" id="run-button" type="submit" disabled>

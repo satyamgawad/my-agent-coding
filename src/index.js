@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import Agent from "./agent.js";
 import ModelRouter from "./model-router.js";
 import Nemotron from "./nemotron.js";
+import ProjectSession from "./project-session.js";
 import WorkspaceManager from "./workspace.js";
 
 const TOOL_PROGRESS = {
@@ -83,15 +84,16 @@ export function taskFailed(result) {
     return result.startsWith("❌") || result.startsWith("Stopped after");
 }
 
-export async function runOneTask(agent, task) {
+export async function runOneTask(agent, task, { sessionContext } = {}) {
     console.log("\nWorking…");
-    const result = await agent.run(task);
+    const result = await agent.run(task, { sessionContext });
     console.log(`\n${taskFailed(result) ? "Agent could not complete the task" : "Agent"}: ${result}`);
     return result;
 }
 
 async function runInteractive(agent) {
     const terminal = createInterface({ input: stdin, output: stdout });
+    const projectSession = new ProjectSession();
     let interrupted = false;
     console.log("🤖 My Coding Agent");
     console.log("Describe a coding task. Type exit or quit when you are finished.\n");
@@ -125,7 +127,14 @@ async function runInteractive(agent) {
                 break;
             }
 
-            await runOneTask(agent, task);
+            const projectAtStart = agent.workspaceManager?.getContext().project;
+            const result = await runOneTask(agent, task, {
+                sessionContext: projectSession.recent(projectAtStart),
+            });
+            projectSession.record(
+                agent.workspaceManager?.getContext().project || projectAtStart,
+                { task, outcome: result }
+            );
             console.log("");
         }
     } finally {
