@@ -10,6 +10,7 @@ const connection = document.querySelector("#connection");
 const activeProject = document.querySelector("#active-project strong");
 const projectCount = document.querySelector("#project-count");
 const projectList = document.querySelector("#project-list");
+const deleteProjectButton = document.querySelector("#delete-project");
 const runProjectButton = document.querySelector("#run-project");
 const openProject = document.querySelector("#open-project");
 const runnerStatus = document.querySelector("#runner-status");
@@ -37,9 +38,6 @@ const clearConversationButton = document.querySelector("#clear-conversation");
 const githubBadge = document.querySelector("#github-badge");
 const githubSummary = document.querySelector("#github-summary");
 const publishGitHubButton = document.querySelector("#publish-github");
-const previewDialog = document.querySelector("#preview-dialog");
-const previewFrame = document.querySelector("#project-preview-frame");
-const closePreviewButton = document.querySelector("#close-preview");
 const activityList = document.querySelector("#activity-list");
 const activityState = document.querySelector("#activity-state");
 const resultCard = document.querySelector(".result-card");
@@ -160,6 +158,7 @@ function setRunning(isRunning) {
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
+  deleteProjectButton.disabled = taskControlsDisabled || !workspaceContext.project;
   runButton.firstElementChild.textContent = isRunning ? "Working…" : "Run task";
   taskHint.textContent = isRunning
     ? "The agent is working through the task and streaming its verified steps."
@@ -411,8 +410,10 @@ function renderStaticPreview() {
   const safeDownloadUrl = safeProjectDownloadUrl(staticPreviewStatus.downloadUrl);
   const canDownload = hasProject && Boolean(safeDownloadUrl);
 
-  previewProjectButton.disabled = !canPreview;
-  previewProjectButton.textContent = canPreview ? "Preview here" : "Preview unavailable";
+  previewProjectButton.href = canPreview ? safeStaticPreviewUrl(staticPreviewStatus.url) : "#";
+  previewProjectButton.setAttribute("aria-disabled", String(!canPreview));
+  previewProjectButton.tabIndex = canPreview ? 0 : -1;
+  previewProjectButton.textContent = canPreview ? "Open preview ↗" : "Preview unavailable";
 
   const downloadUrl = canDownload ? safeDownloadUrl : "#";
   downloadProject.href = downloadUrl;
@@ -971,31 +972,6 @@ async function refreshStaticPreviewStatus() {
   renderStaticPreview();
 }
 
-function closeStaticPreview() {
-  previewFrame.src = "about:blank";
-
-  if (typeof previewDialog.close === "function" && previewDialog.open) {
-    previewDialog.close();
-    return;
-  }
-
-  previewDialog.removeAttribute("open");
-}
-
-function openStaticPreviewDialog() {
-  if (previewProjectButton.disabled) return;
-
-  const previewUrl = safeStaticPreviewUrl(staticPreviewStatus.url);
-  previewFrame.src = previewUrl;
-
-  if (typeof previewDialog.showModal === "function") {
-    previewDialog.showModal();
-    return;
-  }
-
-  previewDialog.setAttribute("open", "");
-}
-
 async function refreshProjectStatus() {
   const response = await fetch("/api/projects/run", { headers: { accept: "application/json" } });
   if (!response.ok) throw new Error("Project preview is unavailable.");
@@ -1048,6 +1024,7 @@ async function refreshContext() {
     const projects = context.projects || [];
     projectCount.textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
     activeProject.textContent = context.project || "No project selected";
+    deleteProjectButton.disabled = !context.project || !taskStatusKnown || Boolean(activeTaskId);
     projectList.textContent = "";
 
     if (projects.length === 0) {
@@ -1094,12 +1071,49 @@ async function selectProject(name) {
     if (!response.ok) throw new Error(body.error || "The project could not be selected.");
 
     workspaceContext = body;
-    closeStaticPreview();
     await refreshContext();
     await refreshTaskHistory();
     addActivity(`Selected ${name}`, "It is ready to run or receive a new task.");
   } catch (error) {
     showRequestError(error.message || "The project could not be selected.");
+  }
+}
+
+async function deleteActiveProject() {
+  const project = workspaceContext.project;
+  if (!project || deleteProjectButton.disabled) return;
+
+  const confirmation = window.prompt(
+    `This permanently deletes the local project "${project}" and its saved Smart mode plan and brief. Type ${project} to confirm.`
+  );
+
+  if (confirmation === null) return;
+
+  if (confirmation !== project) {
+    showRequestError(`Project was not deleted. Type ${project} exactly to confirm.`, "Deletion cancelled");
+    return;
+  }
+
+  deleteProjectButton.disabled = true;
+  deleteProjectButton.textContent = "Deleting…";
+
+  try {
+    const response = await fetch("/api/projects/delete", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ name: project, confirmation }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "The project could not be deleted.");
+
+    workspaceContext = body;
+    await refreshContext();
+    await refreshTaskHistory();
+    addActivity(`Deleted ${project}`, "Its local source files and saved project handoff were removed.");
+  } catch (error) {
+    showRequestError(error.message || "The project could not be deleted.", "Could not delete project");
+  } finally {
+    deleteProjectButton.textContent = "Delete selected project";
   }
 }
 
@@ -1323,18 +1337,16 @@ modelMode.addEventListener("change", () => {
 });
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
-previewProjectButton.addEventListener("click", openStaticPreviewDialog);
-closePreviewButton.addEventListener("click", closeStaticPreview);
+deleteProjectButton.addEventListener("click", deleteActiveProject);
+previewProjectButton.addEventListener("click", (event) => {
+  if (previewProjectButton.getAttribute("aria-disabled") === "true") {
+    event.preventDefault();
+  }
+});
 downloadProject.addEventListener("click", (event) => {
   if (downloadProject.getAttribute("aria-disabled") === "true") {
     event.preventDefault();
   }
-});
-previewDialog.addEventListener("close", () => {
-  previewFrame.src = "about:blank";
-});
-previewDialog.addEventListener("click", (event) => {
-  if (event.target === previewDialog) closeStaticPreview();
 });
 cancelButton.addEventListener("click", cancelTask);
 runEvaluationsButton.addEventListener("click", () => runAgentEvaluations());

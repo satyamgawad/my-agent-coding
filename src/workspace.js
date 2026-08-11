@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const PROJECT_METADATA_DIRECTORIES = ["project-briefs", "project-plans"];
+
 function workspaceError(message, code) {
     const error = new Error(message);
     error.code = code;
@@ -49,6 +51,64 @@ function nearestExistingPath(target) {
     }
 
     return fs.realpathSync(candidate);
+}
+
+function projectMetadataFiles(projectsRoot, project) {
+    const dataDirectory = path.join(projectsRoot, ".agent-data");
+
+    if (!fs.existsSync(dataDirectory)) {
+        return [];
+    }
+
+    const dataDetails = fs.lstatSync(dataDirectory);
+
+    if (!dataDetails.isDirectory() || dataDetails.isSymbolicLink()) {
+        throw workspaceError("Project metadata must be a local directory.", "PROJECT_METADATA_UNSAFE");
+    }
+
+    const resolvedDataDirectory = fs.realpathSync(dataDirectory);
+
+    if (!isInside(projectsRoot, resolvedDataDirectory)) {
+        throw workspaceError("Project metadata resolves outside the projects directory.", "PROJECT_METADATA_UNSAFE");
+    }
+
+    const files = [];
+
+    for (const directoryName of PROJECT_METADATA_DIRECTORIES) {
+        const directory = path.join(resolvedDataDirectory, directoryName);
+
+        if (!fs.existsSync(directory)) {
+            continue;
+        }
+
+        const directoryDetails = fs.lstatSync(directory);
+
+        if (!directoryDetails.isDirectory() || directoryDetails.isSymbolicLink()) {
+            throw workspaceError("Project metadata must be a local directory.", "PROJECT_METADATA_UNSAFE");
+        }
+
+        const resolvedDirectory = fs.realpathSync(directory);
+
+        if (!isInside(resolvedDataDirectory, resolvedDirectory)) {
+            throw workspaceError("Project metadata resolves outside the projects directory.", "PROJECT_METADATA_UNSAFE");
+        }
+
+        const filePath = path.join(resolvedDirectory, `${project}.json`);
+
+        if (!fs.existsSync(filePath)) {
+            continue;
+        }
+
+        const fileDetails = fs.lstatSync(filePath);
+
+        if (!fileDetails.isFile() || fileDetails.isSymbolicLink()) {
+            throw workspaceError("Project metadata must be a local file.", "PROJECT_METADATA_UNSAFE");
+        }
+
+        files.push(filePath);
+    }
+
+    return files;
 }
 
 export default class WorkspaceManager {
@@ -175,6 +235,25 @@ export default class WorkspaceManager {
 
         this.activeProject = project;
         return this.describeActiveProject();
+    }
+
+    deleteProject(name) {
+        const project = projectSlug(name);
+        const projectsRoot = this.resolveProjectsRoot();
+        const workspace = this.resolveProjectWorkspace(project, projectsRoot);
+        const metadataFiles = projectMetadataFiles(projectsRoot, project);
+
+        fs.rmSync(workspace, { recursive: true, force: false, maxRetries: 2 });
+
+        for (const filePath of metadataFiles) {
+            fs.rmSync(filePath, { force: false });
+        }
+
+        if (this.activeProject === project) {
+            this.activeProject = null;
+        }
+
+        return this.getContext();
     }
 
     getActiveWorkspace() {

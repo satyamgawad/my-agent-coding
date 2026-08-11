@@ -610,6 +610,49 @@ export function createUiServer({
             return;
         }
 
+        if (request.method === "POST" && url.pathname === "/api/projects/delete") {
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task to finish before deleting a project.",
+                    code: "ACTIVE_TASK_WORKSPACE_LOCKED",
+                });
+                return;
+            }
+
+            try {
+                const body = await requestJson(request);
+                const name = typeof body?.name === "string" ? body.name : "";
+                const confirmation = typeof body?.confirmation === "string" ? body.confirmation : "";
+                const activeProject = workspaceManager.getContext().project;
+
+                if (!activeProject || name !== activeProject) {
+                    const error = new Error("Select the project before deleting it.");
+                    error.code = "PROJECT_DELETE_NOT_ACTIVE";
+                    throw error;
+                }
+
+                if (confirmation !== name) {
+                    const error = new Error("Type the full project name to confirm deletion.");
+                    error.code = "PROJECT_DELETE_NOT_CONFIRMED";
+                    throw error;
+                }
+
+                const runner = projectRunner.status();
+
+                if (runner.project === activeProject) {
+                    await projectRunner.stop();
+                }
+
+                responseJson(response, 200, workspaceManager.deleteProject(name));
+            } catch (error) {
+                responseJson(response, 400, {
+                    error: error.message || "The project could not be deleted.",
+                    code: error.code || "PROJECT_DELETE_FAILED",
+                });
+            }
+            return;
+        }
+
         if (request.method === "POST" && url.pathname === "/api/projects/run") {
             if (!allowProjectPreviews) {
                 responseJson(response, 403, {

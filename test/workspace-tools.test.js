@@ -120,6 +120,32 @@ test("workspace manager revalidates project roots and active workspaces against 
     );
 });
 
+test("workspace manager deletes only the selected project and its private project metadata", (t) => {
+    const { root, workspaceManager } = createTestWorkspace(t);
+    workspaceManager.createProject("Delete Me");
+    const deletedWorkspace = workspaceManager.getActiveWorkspace();
+    fs.writeFileSync(path.join(deletedWorkspace, "index.html"), "<main>Delete me</main>");
+
+    const metadataRoot = path.join(root, "projects", ".agent-data");
+    for (const directory of ["project-briefs", "project-plans"]) {
+        const metadataDirectory = path.join(metadataRoot, directory);
+        fs.mkdirSync(metadataDirectory, { recursive: true });
+        fs.writeFileSync(path.join(metadataDirectory, "delete-me.json"), "{}");
+    }
+
+    workspaceManager.createProject("Keep Me");
+    const context = workspaceManager.deleteProject("delete me");
+
+    assert.deepEqual(context, {
+        project: "keep-me",
+        workspace: "projects/keep-me",
+        projects: ["keep-me"],
+    });
+    assert.equal(fs.existsSync(deletedWorkspace), false);
+    assert.equal(fs.existsSync(path.join(metadataRoot, "project-briefs", "delete-me.json")), false);
+    assert.equal(fs.existsSync(path.join(metadataRoot, "project-plans", "delete-me.json")), false);
+});
+
 test("workspace manager refuses a projects root that resolves outside the agent", (t) => {
     const { root } = createTestWorkspace(t);
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-outside-"));

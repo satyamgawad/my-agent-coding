@@ -803,16 +803,63 @@ test("the dashboard restores an active task after a reload or a 409 task collisi
     assert.match(script, /startActiveTaskPolling/);
 });
 
-test("the dashboard embeds generated static previews in a restricted iframe", () => {
+test("the dashboard opens generated static previews in a new tab", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
-    const iframe = page.match(/<iframe[\s\S]*?<\/iframe>/)?.[0] || "";
 
-    assert.match(iframe, /sandbox="allow-scripts"/);
-    assert.match(iframe, /referrerpolicy="no-referrer"/);
-    assert.doesNotMatch(iframe, /allow-same-origin|allow-forms|allow-popups|allow-top-navigation|allow-downloads/);
+    assert.match(page, /id="preview-project"[^>]*target="_blank"[^>]*rel="noopener"/);
+    assert.doesNotMatch(page, /<iframe/);
+    assert.match(page, /id="delete-project"/);
     assert.match(script, /\/api\/projects\/preview/);
     assert.match(script, /\/api\/projects\/download/);
+    assert.match(script, /\/api\/projects\/delete/);
+});
+
+test("the dashboard deletes only the selected local project after exact confirmation", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    fs.mkdirSync(path.join(root, "projects", "delete-me"), { recursive: true });
+    fs.mkdirSync(path.join(root, "projects", "keep-me"), { recursive: true });
+    fs.writeFileSync(path.join(root, "projects", "delete-me", "index.html"), "<main>Delete</main>");
+    const server = createUiServer({ agentRoot: root });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const selected = await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "delete-me" }),
+    });
+    assert.equal(selected.status, 200);
+
+    const unconfirmed = await fetch(`${baseUrl}/api/projects/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "delete-me", confirmation: "wrong" }),
+    });
+    assert.equal(unconfirmed.status, 400);
+    assert.deepEqual(await unconfirmed.json(), {
+        error: "Type the full project name to confirm deletion.",
+        code: "PROJECT_DELETE_NOT_CONFIRMED",
+    });
+    assert.equal(fs.existsSync(path.join(root, "projects", "delete-me")), true);
+
+    const deleted = await fetch(`${baseUrl}/api/projects/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "delete-me", confirmation: "delete-me" }),
+    });
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(await deleted.json(), {
+        project: null,
+        workspace: null,
+        projects: ["keep-me"],
+    });
+    assert.equal(fs.existsSync(path.join(root, "projects", "delete-me")), false);
+    assert.equal(fs.existsSync(path.join(root, "projects", "keep-me")), true);
 });
 
 test("the local UI cancels only the active task and returns a final cancellation event", async (t) => {
