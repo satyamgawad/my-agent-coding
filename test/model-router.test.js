@@ -51,6 +51,11 @@ test("automatic routing starts routine builds quickly and reserves deeper lanes 
         deepWorkRouter.selectRoute("Design the security architecture for a migration across the system.").id,
         MODEL_PROFILES.glm.id
     );
+
+    assert.equal(
+        new ModelRouter({ customModel: null }).selectRoute("Improve and polish the whole coding agent project.").id,
+        MODEL_PROFILES.glm.id
+    );
 });
 
 test("Smart mode starts on the deep-work route for planning and independent review", () => {

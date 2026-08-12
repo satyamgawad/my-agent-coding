@@ -52,11 +52,12 @@ const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
 // starts with Nano; larger open-weight lanes are reserved for tasks that
 // explicitly signal more coordination or reasoning.
 const DEEP_WORK_TASK = /\b(architect(?:ure)?|long[- ]horizon|migrat|rewrite|security|system design|threat model)\b/i;
+const PROJECT_WIDE_TASK = /\b(?:whole|entire|full)\s+(?:project|codebase|repository)\b|\b(?:audit|code review|security review|regression|test coverage)\b|\b(?:polish|upgrade|improve|harden|refactor)\b[\s\S]{0,64}\b(?:agent|project|codebase|repository|application|dashboard)\b/i;
 const SUBSTANTIAL_TASK = /\b(authentication|database|deploy|full[- ]stack|large|multi[- ]file|refactor|integration|performance)\b/i;
 const DEEP_WORK_LENGTH = 1_200;
 
 function routeForTask(task) {
-    if (task.length > DEEP_WORK_LENGTH || DEEP_WORK_TASK.test(task)) {
+    if (task.length > DEEP_WORK_LENGTH || DEEP_WORK_TASK.test(task) || PROJECT_WIDE_TASK.test(task)) {
         return [
             MODEL_PROFILES.glm,
             MODEL_PROFILES.kimi,

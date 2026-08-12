@@ -45,6 +45,7 @@ test("Nemotron prompt documents exactly the registered tool names and contracts"
     assert.match(prompt, /testAgentSource must pass/);
     assert.match(prompt, /Prior lessons are advisory evidence/);
     assert.match(prompt, /Maintain an evidence checklist/);
+    assert.match(prompt, /inspect its tree and relevant files before editing/);
     assert.match(prompt, /run projectReadiness after the tests pass/);
     assert.match(prompt, /For a large, multi-phase, or full-stack application, call createProjectPlan next/);
 });

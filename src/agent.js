@@ -17,6 +17,7 @@ const MODIFICATION_TOOLS = new Map([
     ["editAgentSource", "readAgentSource"],
 ]);
 const AGENT_SOURCE_MODIFICATION_TOOLS = new Set(["writeAgentSource", "editAgentSource"]);
+const PROJECT_MODIFICATION_TOOLS = new Set(["writeFile", "editFile"]);
 const MAX_CONSECUTIVE_INSPECTIONS = 6;
 const MAX_CONSECUTIVE_FAILED_TESTS = 2;
 const MAX_MODEL_ATTEMPTS = 3;
@@ -423,6 +424,10 @@ export default class Agent {
         this.model.resetTask?.();
         const smartMode = smart ?? (this.model?.mode === "smart");
         const selfImprovementTask = SELF_IMPROVEMENT_TASK.test(task);
+        const newProjectTask = NEW_PROJECT_TASK.test(task);
+        let requiresExistingProjectInspection = !newProjectTask && Boolean(
+            this.workspaceManager?.getContext().project
+        );
         const activeTools = selfImprovementTask && this.workspaceManager
             ? {
                 ...this.tools,
@@ -432,14 +437,14 @@ export default class Agent {
                 ),
             }
             : this.tools;
-        const retrievedContext = NEW_PROJECT_TASK.test(task)
+        const retrievedContext = newProjectTask
             ? null
             : this.contextRetriever?.retrieve(task);
         const learnedLessons = this.learningMemory?.retrieve(task) || [];
         let savedBrief = null;
         let savedPlan = null;
 
-        if (!NEW_PROJECT_TASK.test(task)) {
+        if (!newProjectTask) {
             try {
                 savedPlan = this.projectPlan?.read();
             } catch {
@@ -526,7 +531,6 @@ export default class Agent {
         let smartReviewAttempts = 0;
         const history = [];
         const applicationWorkflow = APPLICATION_TASK.test(task);
-        const newProjectTask = NEW_PROJECT_TASK.test(task);
         const largeNewApplicationTask = newProjectTask && LARGE_APPLICATION_TASK.test(task);
         let projectCreated = false;
         let projectPlanCreated = !largeNewApplicationTask;
@@ -538,6 +542,9 @@ export default class Agent {
         let projectReadinessVerified = false;
         let sourceTestRequired = false;
         let sourceTestPassed = false;
+        let inspectedExistingProjectTree = !requiresExistingProjectInspection;
+        let inspectedExistingProjectFile = !requiresExistingProjectInspection;
+        let inspectedAgentSource = !selfImprovementTask;
         const verifiedSourceFiles = new Set();
         const verifiedTestFiles = new Set();
 
@@ -722,6 +729,30 @@ export default class Agent {
                         agentError(validation.error, "INVALID_TOOL_ARGUMENTS")
                     );
                 } else if (
+                    PROJECT_MODIFICATION_TOOLS.has(decision.tool) &&
+                    (!inspectedExistingProjectTree || !inspectedExistingProjectFile)
+                ) {
+                    result = normalizeToolError(
+                        decision.tool,
+                        agentError(
+                            "Inspect the existing project structure and a relevant file before editing it.",
+                            "PROJECT_NOT_INSPECTED"
+                        )
+                    );
+                    instruction = "Before editing an existing project, call projectTree or listFiles for the workspace, then readFile for a relevant file.";
+                } else if (
+                    AGENT_SOURCE_MODIFICATION_TOOLS.has(decision.tool) &&
+                    !inspectedAgentSource
+                ) {
+                    result = normalizeToolError(
+                        decision.tool,
+                        agentError(
+                            "Read the relevant agent source before editing it.",
+                            "AGENT_SOURCE_NOT_INSPECTED"
+                        )
+                    );
+                    instruction = "Before editing agent source, call readAgentSource for the relevant file.";
+                } else if (
                     pendingVerification &&
                     !(decision.tool === pendingVerificationTool && decision.arguments.filePath === pendingVerification)
                 ) {
@@ -817,6 +848,26 @@ export default class Agent {
                     ? decision.arguments.filePath
                     : null,
             });
+
+            if (result.ok && result.tool === "selectProject" && !newProjectTask) {
+                requiresExistingProjectInspection = true;
+                inspectedExistingProjectTree = false;
+                inspectedExistingProjectFile = false;
+            }
+
+            if (result.ok && requiresExistingProjectInspection) {
+                if (["listFiles", "projectTree"].includes(result.tool)) {
+                    inspectedExistingProjectTree = true;
+                }
+
+                if (result.tool === "readFile") {
+                    inspectedExistingProjectFile = true;
+                }
+            }
+
+            if (result.ok && result.tool === "readAgentSource") {
+                inspectedAgentSource = true;
+            }
 
             const verificationTool = MODIFICATION_TOOLS.get(result.tool);
 

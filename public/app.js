@@ -148,6 +148,7 @@ const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
 const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/preview/status"];
 const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
+const MODEL_MODE_STORAGE_KEY = "my-coding-agent:model-mode";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
 const MAX_FILE_CHANGE_ITEMS = 5;
 
@@ -156,6 +157,29 @@ let activityEntries = 0;
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
   connection.firstElementChild.style.background = offline ? "var(--coral)" : "var(--aqua)";
+}
+
+function restoreModelModePreference() {
+  try {
+    const savedMode = window.localStorage.getItem(MODEL_MODE_STORAGE_KEY);
+
+    if (savedMode && Object.hasOwn(modelNotes, savedMode)) {
+      modelMode.value = savedMode;
+      modelNote.textContent = modelNotes[savedMode];
+    }
+  } catch {
+    // Browser privacy settings can disable storage. The dashboard still works
+    // with its normal Auto default when the preference cannot be read.
+  }
+}
+
+function saveModelModePreference(mode) {
+  try {
+    window.localStorage.setItem(MODEL_MODE_STORAGE_KEY, mode);
+  } catch {
+    // A selected route is still used for the current task if browser storage
+    // is unavailable; only persistence is skipped.
+  }
 }
 
 function setRunning(isRunning) {
@@ -1446,6 +1470,7 @@ taskInput.addEventListener("keydown", (event) => {
 
 modelMode.addEventListener("change", () => {
   modelNote.textContent = modelNotes[modelMode.value];
+  saveModelModePreference(modelMode.value);
 });
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
@@ -1484,6 +1509,7 @@ for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   });
 }
 
+restoreModelModePreference();
 setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();

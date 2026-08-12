@@ -250,6 +250,99 @@ test("agent blocks re-selecting the already active project", async (t) => {
     assert.match(prompts[2], /already active/);
 });
 
+test("agent inspects an existing project before allowing a source edit", async (t) => {
+    const { root, workspaceManager, tools } = createTestWorkspace(t);
+    workspaceManager.createProject("Inspected");
+    fs.writeFileSync(path.join(root, "projects", "inspected", "note.txt"), "before\n");
+    fs.writeFileSync(
+        path.join(root, "projects", "inspected", "package.json"),
+        JSON.stringify({ scripts: { test: "node --test" } })
+    );
+    const prompts = [];
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("editFile", {
+                filePath: "note.txt",
+                oldText: "before",
+                newText: "after",
+            }),
+            toolCall("projectTree", { directory: "." }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("editFile", {
+                filePath: "note.txt",
+                oldText: "before",
+                newText: "after",
+            }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("test"),
+            { content: "Updated and verified the existing note." },
+        ], prompts),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Update the selected note file."),
+        "Updated and verified the existing note."
+    );
+    assert.match(prompts[1], /PROJECT_NOT_INSPECTED/);
+    assert.match(prompts[1], /projectTree or listFiles/);
+    assert.equal(
+        fs.readFileSync(path.join(root, "projects", "inspected", "note.txt"), "utf8"),
+        "after\n"
+    );
+});
+
+test("agent resets inspection evidence after switching to another existing project", async (t) => {
+    const { root, workspaceManager, tools } = createTestWorkspace(t);
+    workspaceManager.createProject("First");
+    workspaceManager.createProject("Second");
+
+    for (const project of ["first", "second"]) {
+        const directory = path.join(root, "projects", project);
+        fs.writeFileSync(path.join(directory, "note.txt"), `${project}\n`);
+        fs.writeFileSync(
+            path.join(directory, "package.json"),
+            JSON.stringify({ scripts: { test: "node --test" } })
+        );
+    }
+
+    workspaceManager.selectProject("First");
+    const prompts = [];
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("projectTree", { directory: "." }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("selectProject", { name: "Second" }),
+            toolCall("editFile", {
+                filePath: "note.txt",
+                oldText: "second",
+                newText: "updated",
+            }),
+            toolCall("projectTree", { directory: "." }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("editFile", {
+                filePath: "note.txt",
+                oldText: "second",
+                newText: "updated",
+            }),
+            toolCall("readFile", { filePath: "note.txt" }),
+            toolCall("test"),
+            { content: "Updated and verified the second project." },
+        ], prompts),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Update the note in the selected project."),
+        "Updated and verified the second project."
+    );
+    assert.match(prompts[4], /PROJECT_NOT_INSPECTED/);
+    assert.equal(
+        fs.readFileSync(path.join(root, "projects", "second", "note.txt"), "utf8"),
+        "updated\n"
+    );
+});
+
 test("agent blocks repeated failed tests until the model changes and verifies the project", async (t) => {
     const prompts = [];
     const { agent } = createAgent(

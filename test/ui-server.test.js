@@ -827,6 +827,8 @@ test("the dashboard renders live activity, file updates, expandable context, and
     assert.match(script, /function addFileChange/);
     assert.match(script, /function showToast/);
     assert.match(script, /FILE_CHANGE_TOOLS/);
+    assert.match(script, /MODEL_MODE_STORAGE_KEY/);
+    assert.match(script, /restoreModelModePreference/);
 });
 
 test("the dashboard deletes only the selected local project after exact confirmation", async (t) => {

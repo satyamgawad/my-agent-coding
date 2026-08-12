@@ -91,14 +91,39 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano and moves to stronger open-weight routes for heavier requests; you can still select any lane explicitly. Select **Smart** for a deeper planning and independent-review pass; its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano, recognizes full-project audits and agent upgrades as deep-work tasks, and moves to stronger open-weight routes when needed; you can still select any lane explicitly. Select **Smart** for a deeper planning and independent-review pass; your selected model mode is kept in this browser for later dashboard visits, and its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
+
+### VS Code companion extension
+
+The repository also includes a local VS Code extension in
+[`vscode-extension/`](vscode-extension/). It opens a focused agent panel in VS
+Code, submits tasks to the same local dashboard, displays live task progress,
+and lets you select the shared project or open the full browser workspace. It
+does not run another agent server or store your NVIDIA API key.
+
+Start the dashboard first, then package and install the extension:
+
+```bash
+npm run ui
+cd vscode-extension
+npx @vscode/vsce package
+```
+
+In VS Code, run **Extensions: Install from VSIX...** and choose the generated
+`.vsix` file. Then use **Satyam's Agent: Open Agent Panel** from the Command
+Palette. The extension connects to `http://127.0.0.1:3333` by default; set
+`satyamsAgent.dashboardUrl` in VS Code Settings to change it. If you protect a
+hosted dashboard with `AGENT_UI_PASSWORD`, run **Satyam's Agent: Set Dashboard
+Password**. VS Code keeps that password in encrypted SecretStorage, not in
+normal settings or the extension webview.
 
 ### Static web preview and source download
 
 When the active project contains `public/index.html` or `index.html`, the
-dashboard also offers **Preview here** and **Download source**. The preview is
+dashboard also offers **Open preview** and **Download source**. The preview opens
+in a new browser tab and is
 an isolated static HTML/CSS/browser-JavaScript view: it does not run a generated
 Node server, share the dashboard origin, access agent APIs, or receive secrets.
 It is protected by the same dashboard password. Projects that need a backend,

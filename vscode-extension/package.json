@@ -1,0 +1,54 @@
+{
+  "name": "satyams-agent-vscode",
+  "displayName": "Satyam's Agent",
+  "description": "Use your local My Coding Agent dashboard from Visual Studio Code.",
+  "version": "1.0.0",
+  "publisher": "satyamgawad",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:satyamsAgent.openPanel",
+    "onCommand:satyamsAgent.openDashboard",
+    "onCommand:satyamsAgent.selectProject",
+    "onCommand:satyamsAgent.setAccessPassword"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "satyamsAgent.openPanel",
+        "title": "Satyam's Agent: Open Agent Panel"
+      },
+      {
+        "command": "satyamsAgent.openDashboard",
+        "title": "Satyam's Agent: Open Dashboard in Browser"
+      },
+      {
+        "command": "satyamsAgent.selectProject",
+        "title": "Satyam's Agent: Select Project"
+      },
+      {
+        "command": "satyamsAgent.setAccessPassword",
+        "title": "Satyam's Agent: Set Dashboard Password"
+      }
+    ],
+    "configuration": {
+      "title": "Satyam's Agent",
+      "properties": {
+        "satyamsAgent.dashboardUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3333",
+          "description": "Base URL for the running My Coding Agent dashboard."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  }
+}

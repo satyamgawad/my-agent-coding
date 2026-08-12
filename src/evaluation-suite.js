@@ -135,6 +135,7 @@ function createExistingProjectScenario() {
             fs.writeFileSync(path.join(project, "README.md"), "# Math tools\n");
         },
         responses: [
+            toolCall("projectTree", { directory: "." }),
             toolCall("readFile", { filePath: "math.js" }),
             toolCall("editFile", {
                 filePath: "math.js",
