@@ -32,6 +32,15 @@ const LARGE_APPLICATION_TASK = /\b(?:large|big|complex|multi[-\s]?(?:phase|page|
 const SELF_IMPROVEMENT_TASK = /\b(?:self[-\s]?improv(?:e|ement)|(?:improv(?:e|ement)|upgrade).{0,48}\b(?:agent|yourself|own source)|(?:agent|yourself|own source).{0,48}\b(?:improv(?:e|ement)|learn))\b/i;
 const TASK_CANCELLED_RESULT = "❌ Task cancelled by user. Changes already completed were kept.";
 
+export function cleanResponseText(value) {
+    return String(value ?? "")
+        .replace(/(?:<|&lt;)\s*br\s*\/?\s*(?:>|&gt;)/gi, "\n")
+        .replace(/\r\n?/g, "\n")
+        .replace(/[ \t]*\n[ \t]*/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
 export function resolveMaxSteps(value = process.env.AGENT_MAX_STEPS) {
     const configured = Number(value);
 
@@ -278,6 +287,7 @@ function informationOnlyPrompt(task, sessionContext) {
         "You are in general Chat mode. Answer the user's question directly, clearly, and helpfully.",
         "This mode is strictly separate from projects: you cannot inspect files, open projects, create projects, run commands, use tools, or change anything.",
         "Do not claim to have checked a project or performed an action. Do not return JSON or a tool call. If the user asks for a project change, explain that they should switch to Projects.",
+        "Format the answer as clean plain text: short paragraphs and simple - bullets when useful. Never output HTML tags (especially <br>), raw HTML, or a Markdown table unless the user explicitly requests one.",
         sessionContextPrompt(sessionContext),
         `User message:\n${task}`,
     ].filter(Boolean).join("\n\n");
@@ -440,7 +450,7 @@ export default class Agent {
             );
             const content = typeof response?.content === "string" ? response.content.trim() : "";
             const reasoning = typeof response?.reasoning === "string" ? response.reasoning.trim() : "";
-            return content || reasoning || "I couldn't generate an answer for that yet. Please try again.";
+            return cleanResponseText(content || reasoning || "I couldn't generate an answer for that yet. Please try again.");
         } catch (error) {
             if (signal?.aborted) {
                 return TASK_CANCELLED_RESULT;
@@ -680,9 +690,9 @@ export default class Agent {
                     return `❌ The last tool action (${latestResult.tool}) failed: ${latestResult.error.message}`;
                 }
 
-                const completion = content ||
+                const completion = cleanResponseText(content ||
                     (typeof response?.reasoning === "string" ? response.reasoning : "") ||
-                    "Completed.";
+                    "Completed.");
 
                 if (!smartMode) {
                     return completion;

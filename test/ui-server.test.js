@@ -830,6 +830,26 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     assert.match(script, /purpose === "chat" \? "auto" : modelMode\.value/);
 });
 
+test("the dashboard formats agent answers without rendering raw HTML break tags", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.doesNotMatch(page, /<br\s*\/?\s*>/i);
+    assert.match(script, /function renderAnswerText/);
+    assert.match(script, /function cleanAnswerText/);
+    assert.match(script, /renderAnswerText\(resultText, text\)/);
+});
+
+test("the dashboard loads Tailwind utilities and its animated visual layer", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const styles = fs.readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+
+    assert.match(page, /https:\/\/cdn\.tailwindcss\.com/);
+    assert.match(page, /class="ambient-field/);
+    assert.match(styles, /@keyframes drift-orb/);
+    assert.match(styles, /prefers-reduced-motion/);
+});
+
 test("the dashboard renders and clears the saved agent conversation", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");

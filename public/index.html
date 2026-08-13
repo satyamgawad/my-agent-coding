@@ -3,13 +3,31 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101315">
+    <meta name="theme-color" content="#080d1f">
     <title>Satyam's Agent</title>
+    <script>
+      window.tailwind = window.tailwind || {};
+      tailwind.config = {
+        corePlugins: { preflight: false },
+        theme: {
+          extend: {
+            colors: { ink: "#f8fafc", signal: "#8bffcf", glow: "#9b8cff" },
+            boxShadow: { glow: "0 0 48px rgba(139, 255, 207, .18)" }
+          }
+        }
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body>
-    <main class="shell">
-      <header class="topbar">
+  <body class="bg-slate-950 text-slate-100 antialiased">
+    <div class="ambient-field fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
+      <span class="ambient-orb ambient-orb-one"></span>
+      <span class="ambient-orb ambient-orb-two"></span>
+      <span class="ambient-grid"></span>
+    </div>
+    <main class="shell relative isolate">
+      <header class="topbar relative z-10">
         <div class="brand" aria-label="My Coding Agent">
           <span class="brand-mark" aria-hidden="true">✦</span>
           <span>Satyam's agent</span>
@@ -27,7 +45,7 @@
       <section class="workspace-view is-active" id="chat-workspace" data-workspace-view="chat" role="tabpanel" aria-labelledby="chat-page-title">
         <section class="intro chat-intro">
           <p class="eyebrow">GENERAL CONVERSATION</p>
-          <h1 id="chat-page-title">Ask anything.<br><em>Keep projects separate.</em></h1>
+          <h1 id="chat-page-title"><span>Ask anything.</span><em>Keep projects separate.</em></h1>
           <p class="intro-copy">Use Chat for questions, ideas, explanations, and research. Chat never opens, reads, or changes a project.</p>
         </section>
 
@@ -69,8 +87,15 @@
 
           <aside class="chat-guide" aria-label="About Chat">
             <p class="eyebrow">TWO CLEAR SPACES</p>
-            <h2>Chat for thinking.<br>Projects for doing.</h2>
+            <h2><span>Chat for thinking.</span><span>Projects for doing.</span></h2>
             <p>Switch to Projects only when you want the agent to create, analyze, edit, test, or deliver work in a project.</p>
+            <div class="signal-constellation" aria-hidden="true">
+              <span class="constellation-ring"></span>
+              <span class="constellation-core"></span>
+              <span class="constellation-node node-one"></span>
+              <span class="constellation-node node-two"></span>
+              <span class="constellation-node node-three"></span>
+            </div>
             <button class="guide-project-link" type="button" data-workspace-switch="projects">Go to Projects <span aria-hidden="true">→</span></button>
           </aside>
         </section>
@@ -79,7 +104,7 @@
       <section class="workspace-view" id="projects-workspace" data-workspace-view="projects" role="tabpanel" aria-labelledby="page-title" hidden>
       <section class="intro" aria-labelledby="page-title">
         <p class="eyebrow">PROJECT WORKSPACE</p>
-        <h1 id="page-title">Give it a task.<br><em>Build it. Make it better.</em></h1>
+        <h1 id="page-title"><span>Give it a task.</span><em>Build it. Make it better.</em></h1>
         <p class="intro-copy">Create a project, select an existing one, then ask the agent to inspect, edit, test, and deliver verified changes.</p>
       </section>
 
@@ -254,7 +279,7 @@
             </div>
             <span class="result-mark" id="result-mark" aria-hidden="true">✦</span>
           </div>
-          <p class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</p>
+          <div class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</div>
         </article>
       </section>
 

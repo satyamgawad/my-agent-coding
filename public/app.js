@@ -173,6 +173,114 @@ const MAX_FILE_CHANGE_ITEMS = 5;
 
 let activityEntries = 0;
 
+function cleanAnswerText(value) {
+  return String(value ?? "")
+    .replace(/(?:<|&lt;)\s*br\s*\/?\s*(?:>|&gt;)/gi, "\n")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function appendInlineAnswerText(element, value) {
+  const text = String(value ?? "");
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let cursor = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > cursor) {
+      element.append(document.createTextNode(text.slice(cursor, match.index)));
+    }
+
+    const token = match[0];
+    const formatted = document.createElement(token.startsWith("**") ? "strong" : "code");
+    formatted.textContent = token.slice(token.startsWith("**") ? 2 : 1, token.startsWith("**") ? -2 : -1);
+    element.append(formatted);
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < text.length) {
+    element.append(document.createTextNode(text.slice(cursor)));
+  }
+}
+
+function appendAnswerParagraph(container, lines) {
+  if (lines.length === 0) return;
+  const paragraph = document.createElement("p");
+  appendInlineAnswerText(paragraph, lines.join(" "));
+  container.append(paragraph);
+}
+
+function renderAnswerText(container, value) {
+  const text = cleanAnswerText(value);
+  container.textContent = "";
+
+  if (!text) {
+    container.textContent = "No response was returned.";
+    return;
+  }
+
+  const lines = text.split("\n");
+  let paragraphLines = [];
+  let list = null;
+  let listType = null;
+
+  const flush = () => {
+    appendAnswerParagraph(container, paragraphLines);
+    paragraphLines = [];
+    list = null;
+    listType = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (!line) {
+      flush();
+      continue;
+    }
+
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    const bulleted = line.match(/^[-*•]\s+(.+)$/);
+
+    if (numbered || bulleted) {
+      appendAnswerParagraph(container, paragraphLines);
+      paragraphLines = [];
+      const nextListType = numbered ? "ol" : "ul";
+      if (!list || listType !== nextListType) {
+        list = document.createElement(nextListType);
+        list.className = "answer-list";
+        listType = nextListType;
+        container.append(list);
+      }
+      const item = document.createElement("li");
+      appendInlineAnswerText(item, (numbered || bulleted)[1]);
+      list.append(item);
+      continue;
+    }
+
+    if (list) {
+      list = null;
+      listType = null;
+    }
+
+    const heading = line.match(/^#{1,3}\s+(.+)$/);
+    if (heading) {
+      appendAnswerParagraph(container, paragraphLines);
+      paragraphLines = [];
+      const title = document.createElement("h3");
+      title.className = "answer-heading";
+      appendInlineAnswerText(title, heading[1]);
+      container.append(title);
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+
+  flush();
+}
+
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
   connection.firstElementChild.style.background = offline ? "var(--coral)" : "var(--aqua)";
@@ -477,7 +585,7 @@ function showResult(text, ok) {
   resultCard.classList.toggle("is-error", !ok);
   resultTitle.textContent = ok ? "Task complete" : "Task needs attention";
   resultMark.textContent = ok ? "✦" : "!";
-  resultText.textContent = text;
+  renderAnswerText(resultText, text);
   showToast(ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
 }
 
@@ -946,8 +1054,9 @@ function renderProjectConversation() {
       item.className = `conversation-turn is-${speaker}`;
       const label = document.createElement("strong");
       label.textContent = speaker === "user" ? "YOU" : "AGENT";
-      const message = document.createElement("p");
-      message.textContent = content || "No message was saved.";
+      const message = document.createElement("div");
+      message.className = "answer-content";
+      renderAnswerText(message, content || "No message was saved.");
       item.append(label, message);
 
       if (speaker === "agent" && turn.completedAt) {
@@ -1019,8 +1128,9 @@ function renderChatConversation() {
 
       const label = document.createElement("strong");
       label.textContent = speaker === "user" ? "YOU" : "SATYAM'S AGENT";
-      const message = document.createElement("p");
-      message.textContent = content || "No message was saved.";
+      const message = document.createElement("div");
+      message.className = "answer-content";
+      renderAnswerText(message, content || "No message was saved.");
       item.append(label, message);
 
       if (speaker === "agent" && turn.completedAt) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import Agent, { MAX_STEPS, normalizeToolError, normalizeToolResult, resolveMaxSteps } from "../src/agent.js";
+import Agent, { MAX_STEPS, cleanResponseText, normalizeToolError, normalizeToolResult, resolveMaxSteps } from "../src/agent.js";
 import { validateToolArguments } from "../src/tools/validation.js";
 import { createTestWorkspace, scriptedModel, toolCall } from "./helpers.js";
 
@@ -38,6 +38,10 @@ test("agent step budgets accept only safe configured limits", () => {
     assert.equal(resolveMaxSteps("9"), 30);
     assert.equal(resolveMaxSteps("101"), 30);
     assert.equal(resolveMaxSteps("invalid"), 30);
+});
+
+test("agent response cleanup replaces raw HTML line breaks with clean text lines", () => {
+    assert.equal(cleanResponseText("First<br>Second<br/>Third &lt;br&gt;Fourth"), "First\nSecond\nThird\nFourth");
 });
 
 test("tool argument validation rejects malformed, missing, and unknown fields", () => {

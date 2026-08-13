@@ -907,7 +907,7 @@ export function createUiServer({
                 response.writeHead(200, {
                     "content-type": asset.type,
                     "cache-control": "no-cache",
-                    "content-security-policy": "default-src 'self'; connect-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'",
+                    "content-security-policy": "default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; base-uri 'none'; form-action 'self'",
                     ...securityHeaders(),
                 });
                 response.end(contents);
