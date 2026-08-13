@@ -8,6 +8,14 @@ import { createSandbox } from "./sandbox.js";
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_TERMINAL_OUTPUT_CHARS = 16 * 1024;
+const EXTRA_NPM_SCRIPTS = new Set([
+    "lint",
+    "typecheck",
+    "check",
+    "format:check",
+    "test:unit",
+    "test:e2e",
+]);
 
 function terminalError(message, code = "UNSAFE_COMMAND") {
     const error = new Error(message);
@@ -61,11 +69,16 @@ function commandSpec(command, sandbox) {
         return { file: "npm", arguments: ["run", "build"] };
     }
 
+    if (tokens.length === 3 && tokens[0] === "npm" && tokens[1] === "run" && EXTRA_NPM_SCRIPTS.has(tokens[2])) {
+        requirePackageJson(`npm run ${tokens[2]}`, sandbox);
+        return { file: "npm", arguments: ["run", tokens[2]] };
+    }
+
     if (tokens.join(" ") === "node --version") {
         return { file: "node", arguments: ["--version"] };
     }
 
-    if (tokens.length === 3 && tokens[0] === "node" && tokens[1] === "--check") {
+    if (tokens.length === 3 && tokens[0] === "node" && ["--check", "--test"].includes(tokens[1])) {
         const filePath = tokens[2];
 
         if (filePath.startsWith("-") || path.isAbsolute(filePath)) {
@@ -73,11 +86,11 @@ function commandSpec(command, sandbox) {
         }
 
         sandbox.safePath(filePath);
-        return { file: "node", arguments: ["--check", filePath] };
+        return { file: "node", arguments: [tokens[1], filePath] };
     }
 
     throw terminalError(
-        'terminal supports only: "pwd", "ls", "npm install", "npm test", "npm run build", "node --version", and "node --check <relative-file>".'
+        'terminal supports project-safe checks only: "pwd", "ls", "npm install", "npm test", "npm run build", npm run lint/typecheck/check/format:check/test:unit/test:e2e, "node --version", "node --check <relative-file>", and "node --test <relative-file>".'
     );
 }
 

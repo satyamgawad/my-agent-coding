@@ -47,7 +47,7 @@ unavailable, it automatically moves to the next suitable model.
 To start every task with one model, add one of these optional settings:
 
 ```dotenv
-NVIDIA_MODEL_MODE=nano  # or: smart, oss, llama, kimi, oss120, ultra, glm
+NVIDIA_MODEL_MODE=nano  # or: build, smart, oss, llama, kimi, oss120, ultra, glm
 ```
 
 To use a model not in the seven-model route, set a custom model instead:
@@ -63,6 +63,12 @@ more than speed. Smart mode starts with the deep-work route, creates a compact
 implementation brief, and independently reviews the final result before it is
 reported. It makes additional model requests, so it is slower and uses more
 credits than Auto.
+
+Choose `NVIDIA_MODEL_MODE=build` when you want a stronger project-building
+workflow. Build mode starts with the implementation-focused route, produces a
+compact project brief, and independently reviews the delivered result. It is
+best for a new application, website, dashboard, or tool and uses more model
+work than Auto.
 
 For unusually large multi-file tasks, you can raise the agent's step budget
 from its default of 30 to a value between 10 and 100:
@@ -92,6 +98,12 @@ npm run ui
 ```
 
 Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano, recognizes full-project audits and agent upgrades as deep-work tasks, and moves to stronger open-weight routes when needed; you can still select any lane explicitly. Select **Smart** for a deeper planning and independent-review pass; your selected model mode is kept in this browser for later dashboard visits, and its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+
+The dashboard separates **Chat** from **Projects**. Chat is for questions and
+ideas and cannot inspect or alter project files. Projects is where the agent
+creates, analyzes, edits, tests, previews, and delivers code. Select **Build**
+in the Projects model route or use a Build quick starter for a stronger
+plan-and-review project workflow.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 
@@ -136,6 +148,27 @@ files. Do not hard-code credentials in ordinary source files.
 The dashboard also checks whether its configured model routes are currently
 available. A status-check problem does not expose your key or prevent a task
 from using its normal retry and fallback behavior.
+
+### Research, browser checks, and project commands
+
+The agent can search and read public web pages when current technical research
+is needed. It blocks localhost, private-network addresses, redirects to private
+addresses, embedded credentials, and non-text content. Web pages are treated as
+untrusted references; the agent should read a relevant result before relying on
+it and include the public URL in its final answer when it uses that research.
+
+For static projects with `public/index.html` or `index.html`, the agent can run
+an isolated Chromium visual check. It opens the page at desktop and mobile
+sizes, captures temporary screenshots, checks responsive overflow, basic
+accessibility signals, and browser/runtime errors, then discards the images.
+Install Chromium once on each machine with
+`npx playwright install chromium` before the agent runs visual checks.
+
+The project terminal remains scoped to the active workspace and deliberately
+does not accept arbitrary shell commands. Alongside `npm test` and `npm run
+build`, it supports common project checks such as `npm run lint`, `npm run
+typecheck`, `npm run check`, `npm run format:check`, `npm run test:unit`, `npm
+run test:e2e`, plus focused `node --test` and `node --check` file checks.
 
 After a task finishes, enter a follow-up instruction in the same box—for
 example, “change the dashboard to a light theme” or “add export to the active

@@ -7,7 +7,7 @@ test("terminal runs only allowlisted commands inside the selected project", asyn
     tools.createProject.execute({ name: "Terminal" });
     tools.writeFile.execute({
         filePath: "package.json",
-        content: JSON.stringify({ scripts: { test: "node --test" } }),
+        content: JSON.stringify({ scripts: { test: "node --test", lint: "node --check sample.test.js" } }),
     });
     tools.writeFile.execute({
         filePath: "sample.test.js",
@@ -19,6 +19,8 @@ test("terminal runs only allowlisted commands inside the selected project", asyn
     assert.equal(pwd.stdout.trim(), workspaceManager.getActiveWorkspace());
     assert.equal((await tools.test.execute({})).exitCode, 0);
     assert.equal((await tools.terminal.execute({ command: "node --check sample.test.js" })).exitCode, 0);
+    assert.equal((await tools.terminal.execute({ command: "node --test sample.test.js" })).exitCode, 0);
+    assert.equal((await tools.terminal.execute({ command: "npm run lint" })).exitCode, 0);
 });
 
 test("terminal runs generated project scripts without inherited service secrets", async (t) => {
@@ -60,14 +62,14 @@ test("terminal rejects shell syntax, arbitrary commands, traversal, and executab
 
     for (const command of [
         "ls ..",
-        "npm run lint",
+        "npm run arbitrary",
         "node -e process.exit(0)",
         "pwd; whoami",
         "cat ../../.ssh/config",
     ]) {
         await assert.rejects(
             () => tools.terminal.execute({ command }),
-            /terminal supports only|unsafe/
+            /project-safe|unsafe/
         );
     }
 });

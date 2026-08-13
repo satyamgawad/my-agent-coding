@@ -36,7 +36,7 @@ button { cursor: pointer; }
 
 .shell { width: min(1160px, calc(100% - 40px)); margin: 0 auto; padding: 24px 0 64px; }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; min-height: 42px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 42px; }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 760; letter-spacing: -.03em; }
 .brand-mark { display: grid; place-items: center; width: 27px; height: 27px; color: #15180f; background: var(--acid); border-radius: 8px; font-size: 15px; }
@@ -56,12 +56,51 @@ button { cursor: pointer; }
 
 .status-dot { width: 7px; height: 7px; background: var(--aqua); border-radius: 999px; box-shadow: 0 0 0 3px rgba(137, 229, 206, .12); }
 
+.workspace-switcher { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: rgba(0, 0, 0, .16); }
+.workspace-switch { border: 0; border-radius: 999px; padding: 7px 12px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 800; transition: color .16s ease, background .16s ease, box-shadow .16s ease; }
+.workspace-switch:hover, .workspace-switch:focus-visible { color: var(--ink); outline: none; }
+.workspace-switch:focus-visible { box-shadow: 0 0 0 3px rgba(137, 229, 206, .25); }
+.workspace-switch.is-active { color: #172018; background: var(--acid); }
+.workspace-view[hidden] { display: none; }
+
 .intro { max-width: 720px; padding: 76px 0 48px; }
 .eyebrow, .muted-label { margin: 0; color: var(--aqua); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
 h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 20px; font-size: clamp(45px, 7vw, 80px); line-height: .94; letter-spacing: -.065em; }
 h1 em { color: var(--acid); font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -.08em; }
 .intro-copy { max-width: 550px; color: var(--muted); font-size: 17px; line-height: 1.58; }
+
+.chat-intro { max-width: 820px; }
+.chat-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(260px, .55fr); gap: 18px; align-items: stretch; }
+.chat-card, .chat-guide {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(33, 40, 36, .98), rgba(21, 26, 24, .98));
+  box-shadow: var(--shadow);
+}
+.chat-card { padding: 25px; }
+.chat-guide { display: flex; flex-direction: column; padding: 25px; background: linear-gradient(145deg, #22302a, #171d1b 72%); }
+.chat-guide h2 { margin: 8px 0 0; font-size: 24px; line-height: 1.08; letter-spacing: -.05em; }
+.chat-guide p:not(.eyebrow) { margin: 17px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.chat-heading-actions { display: inline-flex; align-items: center; gap: 8px; }
+.chat-safety { display: inline-flex; align-items: center; border: 1px solid rgba(137, 229, 206, .32); border-radius: 999px; padding: 5px 8px; color: var(--aqua); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.chat-turns { display: grid; gap: 12px; max-height: 440px; margin: 24px 0 0; padding: 0; overflow: auto; list-style: none; }
+.chat-turns:empty { display: none; }
+.chat-empty { margin: 24px 0 0; padding: 18px 0 6px; color: #858d83; font-size: 13px; line-height: 1.5; }
+.chat-empty[hidden] { display: none; }
+.chat-turn { max-width: 92%; padding: 13px 15px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; background: rgba(0, 0, 0, .14); }
+.chat-turn.is-user { justify-self: end; border-color: rgba(216, 252, 106, .28); background: rgba(216, 252, 106, .08); }
+.chat-turn.is-agent { justify-self: start; border-color: rgba(137, 229, 206, .24); }
+.chat-turn strong { display: block; color: var(--aqua); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; letter-spacing: .07em; }
+.chat-turn.is-user strong { color: var(--acid); }
+.chat-turn p { margin: 7px 0 0; color: var(--ink); font-size: 14px; line-height: 1.55; white-space: pre-wrap; }
+.chat-turn time { display: block; margin-top: 8px; color: #858d83; font-size: 10px; }
+.chat-composer { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--line); }
+.chat-composer textarea { min-height: 96px; margin: 16px 0 13px; font-size: 16px; }
+.guide-project-link { margin-top: auto; border: 1px solid rgba(216, 252, 106, .45); border-radius: 9px; padding: 10px 11px; color: var(--acid); background: rgba(216, 252, 106, .08); font-size: 12px; font-weight: 800; text-align: left; }
+.guide-project-link:hover, .guide-project-link:focus-visible { border-color: var(--acid); background: rgba(216, 252, 106, .16); outline: none; }
+.guide-project-link span { float: right; }
 
 .workbench, .observatory { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .75fr); gap: 18px; }
 .observatory { grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); margin-top: 18px; }
@@ -321,9 +360,13 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 
 @media (max-width: 760px) {
   .shell { width: min(100% - 28px, 560px); padding-top: 16px; }
+  .topbar { flex-wrap: wrap; }
+  .workspace-switcher { order: 3; width: 100%; justify-content: center; }
+  .workspace-switch { flex: 1; }
   .intro { padding: 54px 0 35px; }
-  .workbench, .observatory { grid-template-columns: 1fr; }
-  .task-card, .workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card { padding: 19px; border-radius: 14px; }
+  .workbench, .observatory, .chat-layout { grid-template-columns: 1fr; }
+  .task-card, .workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card, .chat-card, .chat-guide { padding: 19px; border-radius: 14px; }
+  .chat-turn { max-width: 100%; }
   .task-footer { align-items: flex-start; flex-direction: column; }
   .task-actions { width: 100%; }
   .run-button, .cancel-button { flex: 1; }

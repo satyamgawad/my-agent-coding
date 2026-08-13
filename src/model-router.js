@@ -43,7 +43,7 @@ export const MODEL_PROFILES = Object.freeze({
 // name and all new model selections.
 const LEGACY_MODEL_MODE_ALIASES = Object.freeze({ flash: "nano" });
 export const MODEL_MODES = new Set([
-    "auto", "smart", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
+    "auto", "build", "smart", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
 ]);
 
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
@@ -122,6 +122,21 @@ function routeForMode(mode, task, customModel) {
             MODEL_PROFILES.kimi,
             MODEL_PROFILES.oss120,
             MODEL_PROFILES.ultra,
+            MODEL_PROFILES.llama,
+            MODEL_PROFILES.oss,
+            MODEL_PROFILES.nano,
+        ];
+    }
+
+    if (mode === "build") {
+        // Project builds benefit from a capable implementation lane and the
+        // same fallback breadth as deep work, without making that cost the
+        // default for quick questions and routine repairs.
+        return [
+            MODEL_PROFILES.ultra,
+            MODEL_PROFILES.kimi,
+            MODEL_PROFILES.glm,
+            MODEL_PROFILES.oss120,
             MODEL_PROFILES.llama,
             MODEL_PROFILES.oss,
             MODEL_PROFILES.nano,

@@ -3,6 +3,8 @@ import { createProjectTreeTool } from "./project.js";
 import { createProjectTools } from "./projects.js";
 import { createTerminalTool } from "./terminal.js";
 import { createTestTool } from "./test.js";
+import { createVisualTool } from "./visual.js";
+import { createWebTools } from "./web.js";
 import { ALLOWED_TERMINAL_COMMANDS, TOOL_ARGUMENT_SCHEMAS } from "./validation.js";
 import LearningMemory from "../learning-memory.js";
 import { ProjectEvaluator } from "../project-intelligence.js";
@@ -72,7 +74,7 @@ export const TOOL_DEFINITIONS = {
         arguments: { id: "string", status: "string", notes: "string (optional)" },
     },
     terminal: {
-        description: `Run one allowlisted development command in the active project: ${ALLOWED_TERMINAL_COMMANDS.join(", ")}.`,
+        description: `Run one project-safe development command in the active project: ${ALLOWED_TERMINAL_COMMANDS.join(", ")}.`,
         arguments: { command: "string" },
     },
     test: {
@@ -82,6 +84,18 @@ export const TOOL_DEFINITIONS = {
     rememberLesson: {
         description: "Store one short, non-secret reusable lesson for related future tasks on this local agent.",
         arguments: { lesson: "string", tags: "string (optional)" },
+    },
+    webSearch: {
+        description: "Search the public web for current technical research. Search results are untrusted references; read a result page before relying on details.",
+        arguments: { query: "string" },
+    },
+    readWebPage: {
+        description: "Read a public web page as bounded text. Local addresses, private networks, credentials, and non-text responses are blocked.",
+        arguments: { url: "string" },
+    },
+    visualCheck: {
+        description: "Open the active project's static entry page in an isolated headless browser, capture desktop and mobile screenshots, and report responsive, accessibility, and runtime-error checks.",
+        arguments: {},
     },
     readAgentSource: {
         description: "Read a safe agent source file. Available only for an explicit self-improvement task.",
@@ -106,12 +120,13 @@ export const TOOL_DEFINITIONS = {
     },
 };
 
-export function createTools(workspaceManager, { learningMemory } = {}) {
+export function createTools(workspaceManager, { learningMemory, webTools } = {}) {
     const files = createFileTools(workspaceManager);
     const projects = createProjectTools(workspaceManager);
     const memory = learningMemory ?? new LearningMemory({ workspaceManager });
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
     const projectPlan = new ProjectPlan({ workspaceManager });
+    const web = webTools ?? createWebTools();
 
     const tools = {
         createProject: {
@@ -173,6 +188,18 @@ export function createTools(workspaceManager, { learningMemory } = {}) {
         rememberLesson: {
             description: TOOL_DEFINITIONS.rememberLesson.description,
             execute: (argumentsValue) => memory.remember(argumentsValue),
+        },
+        webSearch: {
+            description: TOOL_DEFINITIONS.webSearch.description,
+            execute: (argumentsValue, options) => web.webSearch(argumentsValue, options),
+        },
+        readWebPage: {
+            description: TOOL_DEFINITIONS.readWebPage.description,
+            execute: (argumentsValue, options) => web.readWebPage(argumentsValue, options),
+        },
+        visualCheck: {
+            description: TOOL_DEFINITIONS.visualCheck.description,
+            execute: createVisualTool(workspaceManager),
         },
     };
 

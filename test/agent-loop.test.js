@@ -781,6 +781,39 @@ test("application tasks cannot finish before verified source, tests, and a passi
     assert.match(prompts[10], /Run projectReadiness/);
 });
 
+test("Build mode recognizes product requests beyond app keywords and plans a verified delivery", async (t) => {
+    const prompts = [];
+    const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
+    const { workspaceManager, tools } = createTestWorkspace(t);
+    const model = scriptedModel([
+        { content: "Goal: build a usable habit tracker. Approach: create a small browser-ready project with persistent task state. Verify: behavior tests and readiness checks." },
+        toolCall("createProject", { name: "Habit Tracker" }),
+        toolCall("writeFile", { filePath: "package.json", content: packageJson }),
+        toolCall("readFile", { filePath: "package.json" }),
+        toolCall("writeFile", { filePath: "habit.js", content: "export const addHabit = (habits, name) => [...habits, { name, done: false }];\n" }),
+        toolCall("readFile", { filePath: "habit.js" }),
+        toolCall("writeFile", {
+            filePath: "habit.test.js",
+            content: 'import assert from "node:assert/strict"; import test from "node:test"; import { addHabit } from "./habit.js"; test("adds a habit", () => assert.equal(addHabit([], "Read").length, 1));\n',
+        }),
+        toolCall("readFile", { filePath: "habit.test.js" }),
+        toolCall("test"),
+        toolCall("projectReadiness"),
+        { content: "Built and verified the habit tracker." },
+        { content: "VERDICT: APPROVED" },
+    ], prompts);
+    model.mode = "build";
+    const agent = new Agent(model, { workspaceManager, tools });
+
+    assert.equal(
+        await agent.run("Build a habit tracker."),
+        "Built and verified the habit tracker."
+    );
+    assert.match(prompts[0], /Smart planning pass/);
+    assert.match(prompts[1], /Smart execution brief/);
+    assert.match(prompts.at(-1), /Smart completion review/);
+});
+
 test("application tasks require tests with a meaningful assertion", async (t) => {
     const prompts = [];
     const packageJson = JSON.stringify({ scripts: { test: "node --test" } });

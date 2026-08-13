@@ -10,6 +10,7 @@ const MAX_FILE_BYTES = 128 * 1024;
 const SECRET_ASSIGNMENT = /\b(api[_-]?key|access[_-]?token|client[_-]?secret|password|secret)\s*([:=])\s*([^\s,;]+)/gi;
 
 export const AGENT_CONVERSATION_ID = "agent-chat";
+export const GENERAL_CHAT_CONVERSATION_ID = "general-chat";
 
 function sessionError(message, code) {
     const error = new Error(message);

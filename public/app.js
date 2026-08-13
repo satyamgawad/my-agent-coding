@@ -1,8 +1,16 @@
-const taskForm = document.querySelector("#task-form");
-const taskInput = document.querySelector("#task-input");
-const runButton = document.querySelector("#run-button");
-const cancelButton = document.querySelector("#cancel-button");
-const taskHint = document.querySelector("#task-hint");
+const projectTaskForm = document.querySelector("#project-task-form");
+const projectTaskInput = document.querySelector("#project-task-input");
+const projectRunButton = document.querySelector("#project-run-button");
+const projectCancelButton = document.querySelector("#cancel-button");
+const projectTaskHint = document.querySelector("#project-task-hint");
+const chatForm = document.querySelector("#chat-form");
+const chatInput = document.querySelector("#chat-input");
+const chatRunButton = document.querySelector("#chat-run-button");
+const chatCancelButton = document.querySelector("#chat-cancel-button");
+const chatHint = document.querySelector("#chat-hint");
+const chatTurns = document.querySelector("#chat-turns");
+const chatEmpty = document.querySelector("#chat-empty");
+const clearChatButton = document.querySelector("#clear-chat");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
 const modelHealth = document.querySelector("#model-health");
@@ -65,10 +73,14 @@ const toolLabels = {
   editFile: "Updated a file",
   terminal: "Ran a development command",
   test: "Ran tests",
+  webSearch: "Searched the public web",
+  readWebPage: "Read a public web page",
+  visualCheck: "Ran browser visual checks",
 };
 
 const modelNotes = {
   auto: "Auto starts with the quick open-weight lane and moves through the strongest matching fallback when needed.",
+  build: "Build uses a stronger implementation lane, creates a project brief, and independently reviews the delivered result.",
   smart: "Uses a deep-work route, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
   custom: "Uses the custom model configured in your private environment, such as a fine-tuned NVIDIA NIM deployment.",
   nano: "Start with NVIDIA's compact open-weight coding and reasoning model.",
@@ -131,6 +143,11 @@ let projectConversation = {
   turns: [],
   message: "Your tasks and final agent responses will appear here.",
 };
+let chatConversation = {
+  state: "idle",
+  turns: [],
+  message: "Start a conversation. Your chat is saved separately from every project.",
+};
 let githubStatus = {
   state: "loading",
   configured: false,
@@ -139,6 +156,7 @@ let githubStatus = {
   message: "Checking GitHub configuration…",
 };
 let activeTaskId = null;
+let activeTaskPurpose = null;
 let taskStatusKnown = false;
 let recoveringActiveTask = false;
 let activeTaskPoll = null;
@@ -149,6 +167,7 @@ const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/pre
 const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
 const MODEL_MODE_STORAGE_KEY = "my-coding-agent:model-mode";
+const WORKSPACE_VIEW_STORAGE_KEY = "my-coding-agent:workspace-view";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
 const MAX_FILE_CHANGE_ITEMS = 5;
 
@@ -182,32 +201,85 @@ function saveModelModePreference(mode) {
   }
 }
 
+function setWorkspaceView(view, { persist = true } = {}) {
+  const target = view === "projects" ? "projects" : "chat";
+
+  for (const panel of document.querySelectorAll("[data-workspace-view]")) {
+    const active = panel.dataset.workspaceView === target;
+    panel.hidden = !active;
+    panel.classList.toggle("is-active", active);
+  }
+
+  for (const button of document.querySelectorAll(".workspace-switch")) {
+    const active = button.dataset.workspaceSwitch === target;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
+
+  if (persist) {
+    try {
+      window.localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, target);
+    } catch {
+      // The workspace remains usable when browser privacy settings prevent
+      // persisting the last selected view.
+    }
+  }
+}
+
+function restoreWorkspaceView() {
+  try {
+    const savedView = window.localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY);
+    setWorkspaceView(savedView === "projects" ? "projects" : "chat", { persist: false });
+  } catch {
+    setWorkspaceView("chat", { persist: false });
+  }
+}
+
 function setRunning(isRunning) {
   const taskControlsDisabled = isRunning || !taskStatusKnown;
-  runButton.disabled = taskControlsDisabled;
-  taskInput.disabled = taskControlsDisabled;
+  projectRunButton.disabled = taskControlsDisabled;
+  projectTaskInput.disabled = taskControlsDisabled;
+  chatRunButton.disabled = taskControlsDisabled;
+  chatInput.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
+  clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
+  for (const control of document.querySelectorAll("[data-chat-prompt]")) {
+    control.disabled = taskControlsDisabled;
+  }
+  for (const control of document.querySelectorAll("[data-build-prompt]")) {
+    control.disabled = taskControlsDisabled;
+  }
   deleteProjectButton.disabled = taskControlsDisabled || !workspaceContext.project;
-  runButton.firstElementChild.textContent = isRunning ? "Working…" : "Run task";
-  taskHint.textContent = isRunning
-    ? "The agent is working through the task and streaming its verified steps."
+  projectRunButton.firstElementChild.textContent = isRunning ? "Working…" : "Run task";
+  chatRunButton.firstElementChild.textContent = isRunning ? "Thinking…" : "Send message";
+  projectTaskHint.textContent = isRunning
+    ? "The agent is working through the project task and streaming its verified steps."
     : taskStatusKnown
       ? workspaceContext.project
         ? `Ready for another instruction on ${workspaceContext.project}. The saved conversation provides follow-up context.`
         : "Describe a new project or select one to continue it."
       : "Checking whether an earlier task is still running…";
+  chatHint.textContent = isRunning
+    ? "Thinking through your question. Your projects remain untouched."
+    : taskStatusKnown
+      ? "Chat answers stay outside your project workspace."
+      : "Checking whether an earlier request is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
   activityState.classList.toggle("is-working", isRunning);
-  cancelButton.hidden = !isRunning;
-  cancelButton.disabled = !isRunning || !activeTaskId;
+  for (const button of [projectCancelButton, chatCancelButton]) {
+    button.hidden = !isRunning;
+    button.disabled = !isRunning || !activeTaskId;
+  }
 
   if (!isRunning) {
     activeTaskId = null;
-    cancelButton.textContent = "Cancel task";
+    activeTaskPurpose = null;
+    projectCancelButton.textContent = "Cancel task";
+    chatCancelButton.textContent = "Cancel reply";
   }
 }
 
@@ -226,9 +298,12 @@ function showRecoveredTask(status, { announce = false, replaceActivity = false }
   setRunning(true);
 
   if (status.state === "cancelling") {
-    cancelButton.disabled = true;
-    cancelButton.textContent = "Cancelling…";
-    taskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+    for (const button of [projectCancelButton, chatCancelButton]) {
+      button.disabled = true;
+      button.textContent = "Cancelling…";
+    }
+    projectTaskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+    chatHint.textContent = "Cancelling the current reply.";
   }
 
   resultTitle.textContent = status.state === "cancelling" ? "Cancelling task" : "Agent is working";
@@ -929,6 +1004,80 @@ async function clearProjectConversation() {
   renderProjectConversation();
 }
 
+function renderChatConversation() {
+  chatTurns.textContent = "";
+  const turns = chatConversation.turns || [];
+  chatEmpty.hidden = turns.length > 0;
+  chatEmpty.textContent = chatConversation.message
+    || "Start a conversation. Your chat is saved separately from every project.";
+  clearChatButton.disabled = turns.length === 0 || Boolean(activeTaskId);
+
+  for (const turn of turns) {
+    for (const [speaker, content] of [["user", turn.task], ["agent", turn.outcome]]) {
+      const item = document.createElement("li");
+      item.className = `chat-turn is-${speaker}`;
+
+      const label = document.createElement("strong");
+      label.textContent = speaker === "user" ? "YOU" : "SATYAM'S AGENT";
+      const message = document.createElement("p");
+      message.textContent = content || "No message was saved.";
+      item.append(label, message);
+
+      if (speaker === "agent" && turn.completedAt) {
+        const completedAt = document.createElement("time");
+        completedAt.dateTime = turn.completedAt;
+        completedAt.textContent = historyDate(turn.completedAt);
+        item.append(completedAt);
+      }
+
+      chatTurns.append(item);
+    }
+  }
+
+  chatTurns.scrollTop = chatTurns.scrollHeight;
+}
+
+async function refreshChatConversation() {
+  try {
+    const response = await fetch("/api/chat/conversation", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("General chat history is unavailable.");
+    chatConversation = await response.json();
+  } catch {
+    chatConversation = {
+      state: "unavailable",
+      turns: [],
+      message: "General chat history is temporarily unavailable.",
+    };
+  }
+
+  renderChatConversation();
+}
+
+async function clearChatConversation() {
+  if (clearChatButton.disabled) return;
+
+  if (!window.confirm("Clear the saved general chat? This cannot be undone.")) {
+    return;
+  }
+
+  clearChatButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/chat/conversation/clear", {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    const conversation = await response.json();
+    if (!response.ok) throw new Error(conversation.error || "General chat could not be cleared.");
+    chatConversation = conversation;
+    showToast("General chat cleared.", "success");
+  } catch (error) {
+    showToast(error.message || "General chat could not be cleared.", "error");
+  }
+
+  renderChatConversation();
+}
+
 function renderGitHubStatus() {
   const ready = githubStatus.state === "ready" && githubStatus.configured && Boolean(workspaceContext.project);
   githubBadge.textContent = githubStatus.state === "ready" ? "Ready" : "Not configured";
@@ -1364,23 +1513,26 @@ async function readEventStream(response) {
   return receivedResult;
 }
 
-async function runTask(task) {
+async function runTask(task, purpose = "project") {
   activeTaskId = null;
+  activeTaskPurpose = purpose;
   let taskStarted = false;
   let recoveredTask = false;
   setRunning(true);
   clearActivity();
-  addActivity("Task submitted", task, "user");
+  addActivity(purpose === "chat" ? "Chat message sent" : "Project task submitted", task, "user");
   resultTitle.textContent = "Agent is working";
   resultMark.textContent = "…";
-  resultText.textContent = "Following the task, checking changes, and waiting to verify the result.";
+  resultText.textContent = purpose === "chat"
+    ? "Preparing a project-safe answer."
+    : "Following the task, checking changes, and waiting to verify the result.";
   resultCard.classList.remove("is-success", "is-error");
 
   try {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: modelMode.value }),
+      body: JSON.stringify({ task, mode: purpose === "chat" ? "auto" : modelMode.value, purpose }),
     });
 
     if (!response.ok) {
@@ -1396,14 +1548,18 @@ async function runTask(task) {
 
     taskStarted = true;
     activeTaskId = response.headers.get("x-task-id");
-    cancelButton.disabled = !activeTaskId;
+    for (const button of [projectCancelButton, chatCancelButton]) {
+      button.disabled = !activeTaskId;
+    }
     const receivedResult = await readEventStream(response);
     if (!receivedResult) {
       throw new Error("The task stream ended before the agent returned a result.");
     }
     await refreshContext();
-    taskInput.value = "";
-    taskInput.focus();
+    await refreshChatConversation();
+    const input = purpose === "chat" ? chatInput : projectTaskInput;
+    input.value = "";
+    input.focus();
   } catch (error) {
     if (taskStarted) {
       recoveredTask = await refreshActiveTask({ announce: true });
@@ -1424,9 +1580,12 @@ async function runTask(task) {
 async function cancelTask() {
   if (!activeTaskId) return;
 
-  cancelButton.disabled = true;
-  cancelButton.textContent = "Cancelling…";
-  taskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+  for (const button of [projectCancelButton, chatCancelButton]) {
+    button.disabled = true;
+    button.textContent = "Cancelling…";
+  }
+  projectTaskHint.textContent = "Cancelling the current task. Changes already completed will remain.";
+  chatHint.textContent = "Cancelling the current reply.";
 
   try {
     const response = await fetch("/api/tasks/cancel", {
@@ -1444,27 +1603,47 @@ async function cancelTask() {
 
     addActivity("Cancellation requested", "Finishing the current safe step and closing the task.");
   } catch (error) {
-    cancelButton.disabled = false;
-    cancelButton.textContent = "Cancel task";
+    projectCancelButton.disabled = false;
+    projectCancelButton.textContent = "Cancel task";
+    chatCancelButton.disabled = false;
+    chatCancelButton.textContent = "Cancel reply";
     addActivity("Could not cancel the task", error.message || "Try again in a moment.", "failed");
   }
 }
 
-taskForm.addEventListener("submit", (event) => {
+projectTaskForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const task = taskInput.value.trim();
+  const task = projectTaskInput.value.trim();
   if (!task) {
-    taskInput.focus();
-    taskHint.textContent = "Add a short task description to begin.";
+    projectTaskInput.focus();
+    projectTaskHint.textContent = "Add a short project task description to begin.";
     return;
   }
-  runTask(task);
+  runTask(task, "project");
 });
 
-taskInput.addEventListener("keydown", (event) => {
+chatForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const task = chatInput.value.trim();
+  if (!task) {
+    chatInput.focus();
+    chatHint.textContent = "Ask a question to start the conversation.";
+    return;
+  }
+  runTask(task, "chat");
+});
+
+projectTaskInput.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
     event.preventDefault();
-    taskForm.requestSubmit();
+    projectTaskForm.requestSubmit();
+  }
+});
+
+chatInput.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    chatForm.requestSubmit();
   }
 });
 
@@ -1485,11 +1664,19 @@ downloadProject.addEventListener("click", (event) => {
     event.preventDefault();
   }
 });
-cancelButton.addEventListener("click", cancelTask);
+projectCancelButton.addEventListener("click", cancelTask);
+chatCancelButton.addEventListener("click", cancelTask);
 runEvaluationsButton.addEventListener("click", () => runAgentEvaluations());
 runLiveEvaluationsButton.addEventListener("click", () => runAgentEvaluations("live"));
 publishGitHubButton.addEventListener("click", publishGitHubProject);
 clearConversationButton.addEventListener("click", clearProjectConversation);
+clearChatButton.addEventListener("click", clearChatConversation);
+
+for (const switcher of document.querySelectorAll("[data-workspace-switch]")) {
+  switcher.addEventListener("click", () => {
+    setWorkspaceView(switcher.dataset.workspaceSwitch);
+  });
+}
 
 for (const toggle of document.querySelectorAll("[data-panel-toggle]")) {
   toggle.addEventListener("click", () => {
@@ -1504,15 +1691,34 @@ for (const toggle of document.querySelectorAll("[data-panel-toggle]")) {
 
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {
-    taskInput.value = suggestion.dataset.prompt;
-    taskInput.focus();
+    projectTaskInput.value = suggestion.dataset.prompt;
+    projectTaskInput.focus();
+  });
+}
+
+for (const suggestion of document.querySelectorAll("[data-chat-prompt]")) {
+  suggestion.addEventListener("click", () => {
+    chatInput.value = suggestion.dataset.chatPrompt;
+    chatInput.focus();
+  });
+}
+
+for (const suggestion of document.querySelectorAll("[data-build-prompt]")) {
+  suggestion.addEventListener("click", () => {
+    projectTaskInput.value = suggestion.dataset.buildPrompt;
+    modelMode.value = "build";
+    modelNote.textContent = modelNotes.build;
+    saveModelModePreference("build");
+    projectTaskInput.focus();
   });
 }
 
 restoreModelModePreference();
+restoreWorkspaceView();
 setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();
+refreshChatConversation();
 refreshModelHealth();
 refreshAgentEvaluation();
 refreshTaskHistory();

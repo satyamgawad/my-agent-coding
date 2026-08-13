@@ -66,6 +66,16 @@ test("Smart mode starts on the deep-work route for planning and independent revi
     );
 });
 
+test("Build mode starts on a stronger implementation lane with broad fallbacks", () => {
+    const router = new ModelRouter({ mode: "build", customModel: null });
+
+    assert.equal(
+        router.selectRoute("Build a responsive habit tracker website.").id,
+        MODEL_PROFILES.ultra.id
+    );
+    assert.equal(router.route.at(-1).id, MODEL_PROFILES.nano.id);
+});
+
 test("Smart mode uses a configured fine-tuned model for every planning and review pass", () => {
     const router = new ModelRouter({
         mode: "smart",

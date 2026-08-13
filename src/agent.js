@@ -9,7 +9,7 @@ import ProjectPlan from "./project-plan.js";
 export const DEFAULT_MAX_STEPS = 30;
 export const MAX_STEPS = resolveMaxSteps();
 
-const INSPECTION_TOOLS = new Set(["listFiles", "readFile", "projectTree", "projectReadiness", "readProjectPlan", "readAgentSource"]);
+const INSPECTION_TOOLS = new Set(["listFiles", "readFile", "projectTree", "projectReadiness", "readProjectPlan", "readAgentSource", "webSearch", "readWebPage", "visualCheck"]);
 const MODIFICATION_TOOLS = new Map([
     ["writeFile", "readFile"],
     ["editFile", "readFile"],
@@ -26,8 +26,8 @@ const MAX_HISTORY_CHARS = 48 * 1024;
 const MAX_TOOL_RESULT_CHARS = 16 * 1024;
 const MAX_SMART_PLAN_CHARS = 3_600;
 const MAX_SMART_REVIEW_ATTEMPTS = 2;
-const APPLICATION_TASK = /\b(app|application|website|web\s*site|portfolio|dashboard)\b/i;
-const NEW_PROJECT_TASK = /\b(?:create|build|make|start|scaffold)\b[\s\S]{0,80}\b(?:app|application|website|web\s*site|portfolio|dashboard)\b/i;
+const APPLICATION_TASK = /\b(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\b/i;
+const NEW_PROJECT_TASK = /\b(?:create|build|make|start|scaffold|develop|generate)\b[\s\S]{0,100}\b(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\b/i;
 const LARGE_APPLICATION_TASK = /\b(?:large|big|complex|multi[-\s]?(?:phase|page|feature|module)|full[-\s]?stack|production|enterprise|roadmap|milestone|authentication|authorization|database|migration|deployment|backend|microservice)\b/i;
 const SELF_IMPROVEMENT_TASK = /\b(?:self[-\s]?improv(?:e|ement)|(?:improv(?:e|ement)|upgrade).{0,48}\b(?:agent|yourself|own source)|(?:agent|yourself|own source).{0,48}\b(?:improv(?:e|ement)|learn))\b/i;
 const TASK_CANCELLED_RESULT = "❌ Task cancelled by user. Changes already completed were kept.";
@@ -273,6 +273,16 @@ function sessionContextPrompt(sessionContext) {
         : null;
 }
 
+function informationOnlyPrompt(task, sessionContext) {
+    return [
+        "You are in general Chat mode. Answer the user's question directly, clearly, and helpfully.",
+        "This mode is strictly separate from projects: you cannot inspect files, open projects, create projects, run commands, use tools, or change anything.",
+        "Do not claim to have checked a project or performed an action. Do not return JSON or a tool call. If the user asks for a project change, explain that they should switch to Projects.",
+        sessionContextPrompt(sessionContext),
+        `User message:\n${task}`,
+    ].filter(Boolean).join("\n\n");
+}
+
 function smartPlanningPrompt(contextualTask) {
     return [
         "Smart planning pass. Create a compact implementation brief for the task below.",
@@ -420,9 +430,34 @@ export default class Agent {
         return verdict;
     }
 
-    async run(task, { signal, sessionContext, smart } = {}) {
+    async runInformationOnlyChat(task, { signal, sessionContext } = {}) {
+        try {
+            const response = await this.generateWithRetry(
+                informationOnlyPrompt(task, sessionContext),
+                [],
+                signal,
+                task
+            );
+            const content = typeof response?.content === "string" ? response.content.trim() : "";
+            const reasoning = typeof response?.reasoning === "string" ? response.reasoning.trim() : "";
+            return content || reasoning || "I couldn't generate an answer for that yet. Please try again.";
+        } catch (error) {
+            if (signal?.aborted) {
+                return TASK_CANCELLED_RESULT;
+            }
+
+            return `❌ The chat request failed: ${error.message || String(error)}`;
+        }
+    }
+
+    async run(task, { signal, sessionContext, smart, purpose = "project" } = {}) {
         this.model.resetTask?.();
-        const smartMode = smart ?? (this.model?.mode === "smart");
+
+        if (purpose === "chat") {
+            return this.runInformationOnlyChat(task, { signal, sessionContext });
+        }
+
+        const smartMode = smart ?? (["smart", "build"].includes(this.model?.mode));
         const selfImprovementTask = SELF_IMPROVEMENT_TASK.test(task);
         const newProjectTask = NEW_PROJECT_TASK.test(task);
         let requiresExistingProjectInspection = !newProjectTask && Boolean(

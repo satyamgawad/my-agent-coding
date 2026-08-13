@@ -4,8 +4,15 @@ export const ALLOWED_TERMINAL_COMMANDS = [
     "npm install",
     "npm test",
     "npm run build",
+    "npm run lint",
+    "npm run typecheck",
+    "npm run check",
+    "npm run format:check",
+    "npm run test:unit",
+    "npm run test:e2e",
     "node --version",
     "node --check <relative-file>",
+    "node --test <relative-file>",
 ];
 
 function isAllowedTerminalCommand(command) {
@@ -16,13 +23,19 @@ function isAllowedTerminalCommand(command) {
             "npm install",
             "npm test",
             "npm run build",
+            "npm run lint",
+            "npm run typecheck",
+            "npm run check",
+            "npm run format:check",
+            "npm run test:unit",
+            "npm run test:e2e",
             "node --version",
         ].includes(command)
     ) {
         return true;
     }
 
-    return /^node --check (?![-/])[^\s]+$/.test(command);
+    return /^node --(?:check|test) (?![-/])[^\s]+$/.test(command);
 }
 
 export const TOOL_ARGUMENT_SCHEMAS = {
@@ -79,6 +92,13 @@ export const TOOL_ARGUMENT_SCHEMAS = {
         required: { lesson: { type: "string", nonEmpty: true } },
         optional: { tags: { type: "string" } },
     },
+    webSearch: {
+        required: { query: { type: "string", nonEmpty: true } },
+    },
+    readWebPage: {
+        required: { url: { type: "string", nonEmpty: true } },
+    },
+    visualCheck: {},
     readAgentSource: {
         required: { filePath: { type: "string", nonEmpty: true } },
     },

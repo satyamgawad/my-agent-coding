@@ -14,20 +14,77 @@
           <span class="brand-mark" aria-hidden="true">✦</span>
           <span>Satyam's agent</span>
         </div>
+        <nav class="workspace-switcher" aria-label="Choose a workspace" role="tablist">
+          <button class="workspace-switch is-active" type="button" role="tab" data-workspace-switch="chat" aria-controls="chat-workspace" aria-selected="true">Chat</button>
+          <button class="workspace-switch" type="button" role="tab" data-workspace-switch="projects" aria-controls="projects-workspace" aria-selected="false">Projects</button>
+        </nav>
         <div class="connection" id="connection" role="status">
           <span class="status-dot" aria-hidden="true"></span>
           <span>Local session</span>
         </div>
       </header>
 
+      <section class="workspace-view is-active" id="chat-workspace" data-workspace-view="chat" role="tabpanel" aria-labelledby="chat-page-title">
+        <section class="intro chat-intro">
+          <p class="eyebrow">GENERAL CONVERSATION</p>
+          <h1 id="chat-page-title">Ask anything.<br><em>Keep projects separate.</em></h1>
+          <p class="intro-copy">Use Chat for questions, ideas, explanations, and research. Chat never opens, reads, or changes a project.</p>
+        </section>
+
+        <section class="chat-layout" aria-label="General chat workspace">
+          <section class="chat-card">
+            <div class="card-heading">
+              <div>
+                <p class="eyebrow">CHAT</p>
+                <h2>A focused answer, without project changes</h2>
+              </div>
+              <div class="chat-heading-actions">
+                <span class="chat-safety">Project-safe</span>
+                <button class="conversation-clear" id="clear-chat" type="button" disabled>Clear chat</button>
+              </div>
+            </div>
+
+            <ol class="chat-turns" id="chat-turns" aria-label="Saved general chat"></ol>
+            <p class="chat-empty" id="chat-empty">Start a conversation. Your chat is saved separately from every project.</p>
+
+            <form class="chat-composer" id="chat-form">
+              <label class="sr-only" for="chat-input">Ask a question</label>
+              <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask for an explanation, compare ideas, or explore a topic…" autofocus disabled></textarea>
+              <div class="suggestions" aria-label="Chat suggestions">
+                <button type="button" data-chat-prompt="Explain this concept in simple words: ">Explain a concept</button>
+                <button type="button" data-chat-prompt="Help me compare these options: ">Compare options</button>
+                <button type="button" data-chat-prompt="Help me think through this idea: ">Explore an idea</button>
+              </div>
+              <div class="task-footer">
+                <p id="chat-hint">Chat answers stay outside your project workspace.</p>
+                <div class="task-actions">
+                  <button class="cancel-button" id="chat-cancel-button" type="button" hidden>Cancel reply</button>
+                  <button class="run-button" id="chat-run-button" type="submit" disabled>
+                    <span>Send message</span><span aria-hidden="true">↑</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </section>
+
+          <aside class="chat-guide" aria-label="About Chat">
+            <p class="eyebrow">TWO CLEAR SPACES</p>
+            <h2>Chat for thinking.<br>Projects for doing.</h2>
+            <p>Switch to Projects only when you want the agent to create, analyze, edit, test, or deliver work in a project.</p>
+            <button class="guide-project-link" type="button" data-workspace-switch="projects">Go to Projects <span aria-hidden="true">→</span></button>
+          </aside>
+        </section>
+      </section>
+
+      <section class="workspace-view" id="projects-workspace" data-workspace-view="projects" role="tabpanel" aria-labelledby="page-title" hidden>
       <section class="intro" aria-labelledby="page-title">
-        <p class="eyebrow">AUTONOMOUS LOCAL WORKSPACE</p>
-        <h1 id="page-title">Give it a task.<br><em>Watch it ship.</em></h1>
-        <p class="intro-copy">A focused workspace for creating projects, fixing code, and following every verified step without leaving your browser.</p>
+        <p class="eyebrow">PROJECT WORKSPACE</p>
+        <h1 id="page-title">Give it a task.<br><em>Build it. Make it better.</em></h1>
+        <p class="intro-copy">Create a project, select an existing one, then ask the agent to inspect, edit, test, and deliver verified changes.</p>
       </section>
 
       <section class="workbench" aria-label="Agent workspace">
-        <form class="task-card" id="task-form">
+        <form class="task-card" id="project-task-form">
           <div class="card-heading">
             <div>
               <p class="eyebrow">NEW OR FOLLOW-UP</p>
@@ -36,8 +93,8 @@
             <span class="shortcut">⌘ ↵</span>
           </div>
 
-          <label class="sr-only" for="task-input">Describe a coding task</label>
-          <textarea id="task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site — or tell the active project what to change next." autofocus disabled></textarea>
+          <label class="sr-only" for="project-task-input">Describe a project task</label>
+          <textarea id="project-task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site — or tell the active project what to change next." disabled></textarea>
 
           <div class="model-control">
             <div>
@@ -47,6 +104,7 @@
             </div>
             <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
               <option value="auto" selected>Auto · all seven</option>
+              <option value="build">Build · plan + deep review</option>
               <option value="smart">Smart · plan + independent review</option>
               <option value="custom">Fine-tuned · custom endpoint</option>
               <option value="nano">Fast · Nemotron 3 Nano</option>
@@ -60,16 +118,19 @@
           </div>
 
           <div class="suggestions" aria-label="Task suggestions">
+            <button type="button" data-build-prompt="Build a responsive habit tracker web app with add, complete, edit, and delete actions that persist after refresh.">Build web app</button>
+            <button type="button" data-build-prompt="Build a polished landing page for a new product with a responsive layout, clear call to action, and accessible navigation.">Build landing page</button>
+            <button type="button" data-prompt="Run browser visual checks on the active project's static page. Inspect and fix any runtime, responsive, or accessibility issues you find.">Check UI</button>
             <button type="button" data-prompt="Create a simple Todo application with add, complete, and delete actions.">Todo app</button>
             <button type="button" data-prompt="Inspect the active project and explain its structure.">Explain project</button>
             <button type="button" data-prompt="Run tests and fix any errors.">Fix tests</button>
           </div>
 
           <div class="task-footer">
-            <p id="task-hint">After a task completes, send a follow-up instruction for the active project.</p>
+            <p id="project-task-hint">After a task completes, send a follow-up instruction for the active project.</p>
             <div class="task-actions">
               <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel task</button>
-              <button class="run-button" id="run-button" type="submit" disabled>
+              <button class="run-button" id="project-run-button" type="submit" disabled>
                 <span>Run task</span><span aria-hidden="true">→</span>
               </button>
             </div>
@@ -257,6 +318,7 @@
         <p class="github-summary" id="github-summary" aria-live="polite">Checking GitHub configuration…</p>
         <button class="github-publish-button" id="publish-github" type="button" disabled>Publish current project</button>
         <p class="github-scope">Publishes only safe project source after confirmation. It never sends environment files, dependencies, keys, Git data, or deletes remote files.</p>
+      </section>
       </section>
     </main>
 

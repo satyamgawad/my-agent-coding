@@ -157,6 +157,55 @@ test("the dashboard saves an ongoing agent conversation before a project exists"
     }]);
 });
 
+test("general chat stays separate from project context and project conversations", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const prompts = [];
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate(prompt) {
+                prompts.push(prompt);
+                return { content: "A clear general answer." };
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    fs.mkdirSync(path.join(root, "projects", "notes-app"), { recursive: true });
+    await fetch(`${baseUrl}/api/projects/select`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "notes-app" }),
+    });
+
+    const chat = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "What is a REST API?", purpose: "chat" }),
+    });
+    assert.equal(chat.status, 200);
+    assert.match(await chat.text(), /A clear general answer/);
+    assert.match(prompts[0], /general Chat mode/);
+    assert.match(prompts[0], /cannot inspect files, open projects, create projects, run commands, use tools, or change anything/i);
+
+    const generalChat = await fetch(`${baseUrl}/api/chat/conversation`);
+    assert.deepEqual((await generalChat.json()).turns.map(({ task, outcome }) => ({ task, outcome })), [{
+        task: "What is a REST API?",
+        outcome: "A clear general answer.",
+    }]);
+
+    const projectConversation = await fetch(`${baseUrl}/api/conversation`);
+    assert.deepEqual((await projectConversation.json()).turns, []);
+
+    const history = await fetch(`${baseUrl}/api/tasks/history`);
+    assert.equal((await history.json()).records[0].project, null);
+});
+
 test("the dashboard runs Smart mode and exposes its saved project handoff", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const server = createUiServer({
@@ -769,6 +818,16 @@ test("the dashboard renders the Smart mode selector and saved handoff", () => {
     assert.match(page, /id="brief-details"/);
     assert.match(script, /\/api\/projects\/brief/);
     assert.match(script, /renderProjectBrief/);
+});
+
+test("the dashboard exposes a build-focused project mode and quick starters", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /value="build">Build · plan \+ deep review/);
+    assert.match(page, /data-build-prompt/);
+    assert.match(script, /modelNotes\.build/);
+    assert.match(script, /purpose === "chat" \? "auto" : modelMode\.value/);
 });
 
 test("the dashboard renders and clears the saved agent conversation", () => {

@@ -14,7 +14,7 @@ import ProjectBrief from "./project-brief.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
-import ProjectSession, { AGENT_CONVERSATION_ID } from "./project-session.js";
+import ProjectSession, { AGENT_CONVERSATION_ID, GENERAL_CHAT_CONVERSATION_ID } from "./project-session.js";
 import TaskHistory from "./task-history.js";
 import WorkspaceManager from "./workspace.js";
 
@@ -410,6 +410,49 @@ export function createUiServer({
             return;
         }
 
+        if (request.method === "GET" && url.pathname === "/api/chat/conversation") {
+            try {
+                const turns = projectSession.recent(GENERAL_CHAT_CONVERSATION_ID);
+                responseJson(response, 200, {
+                    state: "ready",
+                    turns,
+                    message: turns.length > 0
+                        ? "Your general chat is ready to continue."
+                        : "Start a conversation. Your chat is saved separately from every project.",
+                });
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    turns: [],
+                    message: "General chat history is temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/chat/conversation/clear") {
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active request to finish before clearing general chat.",
+                });
+                return;
+            }
+
+            try {
+                projectSession.clear(GENERAL_CHAT_CONVERSATION_ID);
+                responseJson(response, 200, {
+                    state: "cleared",
+                    turns: [],
+                    message: "General chat cleared.",
+                });
+            } catch {
+                responseJson(response, 500, {
+                    error: "General chat history could not be cleared.",
+                });
+            }
+            return;
+        }
+
         if (request.method === "GET" && url.pathname === "/api/conversation") {
             try {
                 const turns = projectSession.recent(AGENT_CONVERSATION_ID);
@@ -733,6 +776,7 @@ export function createUiServer({
 
             const task = typeof body?.task === "string" ? body.task.trim() : "";
             const mode = typeof body?.mode === "string" ? body.mode : "auto";
+            const purpose = typeof body?.purpose === "string" ? body.purpose : "project";
 
             if (!task) {
                 responseJson(response, 400, { error: "Describe a task before running it." });
@@ -741,6 +785,11 @@ export function createUiServer({
 
             if (!MODEL_MODES.has(mode) || (mode === "custom" && !process.env.NVIDIA_MODEL)) {
                 responseJson(response, 400, { error: "Choose a supported model mode." });
+                return;
+            }
+
+            if (!new Set(["chat", "project"]).has(purpose)) {
+                responseJson(response, 400, { error: "Choose a supported workspace." });
                 return;
             }
 
@@ -791,11 +840,15 @@ export function createUiServer({
 
             let taskSucceeded = false;
             let taskResult = null;
+            const conversationId = purpose === "chat"
+                ? GENERAL_CHAT_CONVERSATION_ID
+                : AGENT_CONVERSATION_ID;
 
             try {
                 const result = await agent.run(task, {
                     signal: taskRecord.controller.signal,
-                    sessionContext: projectSession.recent(AGENT_CONVERSATION_ID),
+                    sessionContext: projectSession.recent(conversationId),
+                    purpose,
                 });
                 taskResult = result;
                 taskSucceeded = !isTaskFailure(result);
@@ -815,7 +868,7 @@ export function createUiServer({
             } finally {
                 try {
                     projectSession.record(
-                        AGENT_CONVERSATION_ID,
+                        conversationId,
                         { task, outcome: taskResult }
                     );
                 } catch {
@@ -825,7 +878,7 @@ export function createUiServer({
                 try {
                     taskHistory.record({
                         createdAt: new Date(taskRecord.startedAt).toISOString(),
-                        project: workspaceManager.getContext().project,
+                        project: purpose === "project" ? workspaceManager.getContext().project : null,
                         model: model.activeProfile?.label || null,
                         ok: taskSucceeded,
                         cancelled: taskRecord.controller.signal.aborted,
