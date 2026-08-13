@@ -7,8 +7,8 @@ import Agent from "./agent.js";
 import EvaluationSuite from "./evaluation-suite.js";
 import GitHubPublisher from "./github-publisher.js";
 import ModelHealth from "./model-health.js";
-import ModelRouter, { MODEL_MODES } from "./model-router.js";
-import Nemotron, { listNvidiaModels } from "./nemotron.js";
+import ModelRouter, { customModelFromEnvironment, MODEL_MODES, museModelFromEnvironment } from "./model-router.js";
+import Nemotron, { listProviderModels } from "./nemotron.js";
 import ProjectArtifacts from "./project-artifacts.js";
 import ProjectBrief from "./project-brief.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
@@ -230,8 +230,8 @@ function activeTaskStatus(activeTask) {
 
 export function createUiServer({
     agentRoot = process.cwd(),
-    createModel = (profile) => new Nemotron({ model: profile.id }),
-    modelHealth = new ModelHealth({ listModels: listNvidiaModels }),
+    createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
+    modelHealth = new ModelHealth({ listModels: () => listProviderModels({ endpoint: "ollama" }) }),
     accessPassword = "",
     allowProjectPreviews = true,
     githubPublisher,
@@ -532,7 +532,8 @@ export function createUiServer({
 
             if (evaluationMode === "live" && (
                 !MODEL_MODES.has(modelMode) ||
-                (modelMode === "custom" && !process.env.NVIDIA_MODEL)
+                (modelMode === "custom" && !customModelFromEnvironment()) ||
+                (modelMode === "power" && !museModelFromEnvironment())
             )) {
                 responseJson(response, 400, { error: "Choose a supported model mode for the live evaluation." });
                 return;
@@ -783,7 +784,9 @@ export function createUiServer({
                 return;
             }
 
-            if (!MODEL_MODES.has(mode) || (mode === "custom" && !process.env.NVIDIA_MODEL)) {
+            if (!MODEL_MODES.has(mode) ||
+                (mode === "custom" && !customModelFromEnvironment()) ||
+                (mode === "power" && !museModelFromEnvironment())) {
                 responseJson(response, 400, { error: "Choose a supported model mode." });
                 return;
             }
@@ -907,7 +910,7 @@ export function createUiServer({
                 response.writeHead(200, {
                     "content-type": asset.type,
                     "cache-control": "no-cache",
-                    "content-security-policy": "default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; base-uri 'none'; form-action 'self'",
+                    "content-security-policy": "default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'",
                     ...securityHeaders(),
                 });
                 response.end(contents);

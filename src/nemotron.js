@@ -2,7 +2,9 @@ import OpenAI from "openai";
 import "dotenv/config";
 import { TOOL_DEFINITIONS } from "./tools/index.js";
 
-const DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
+const DEFAULT_MODEL = "qwen2.5-coder:7b";
+const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
+const DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1";
 
 function argumentSchema(argumentsDefinition) {
     const properties = {};
@@ -69,14 +71,39 @@ function nativeToolContent(toolCalls) {
     }
 }
 
-export function modelEndpointConfig(environment = process.env) {
-    const apiKey = environment.AGENT_MODEL_API_KEY || environment.NVIDIA_API_KEY;
-    const baseURL = environment.AGENT_MODEL_BASE_URL || "https://integrate.api.nvidia.com/v1";
+export function modelEndpointConfig(environment = process.env, { endpoint = "auto" } = {}) {
+    const selectedEndpoint = endpoint === "auto"
+        ? (environment.AGENT_MODEL_BASE_URL ? "custom" : "ollama")
+        : endpoint;
+    const ollamaBaseURL = environment.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL;
+    const isLocalOllama = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/v1\/?$/i.test(ollamaBaseURL);
+    const configByEndpoint = {
+        ollama: {
+            baseURL: ollamaBaseURL,
+            apiKey: environment.OLLAMA_API_KEY || (isLocalOllama ? "ollama" : null),
+            missingKeyMessage: "OLLAMA_API_KEY is required for a custom local Ollama endpoint.",
+        },
+        custom: {
+            baseURL: environment.AGENT_MODEL_BASE_URL,
+            apiKey: environment.AGENT_MODEL_API_KEY,
+            missingKeyMessage: "AGENT_MODEL_API_KEY is required for a custom remote model endpoint.",
+        },
+        nvidiaMuse: {
+            baseURL: environment.NVIDIA_MUSE_BASE_URL || environment.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL,
+            apiKey: environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY,
+            missingKeyMessage: "NVIDIA_API_KEY is required for the Muse Glimmer Power Build route.",
+        },
+    };
+    const selectedConfig = configByEndpoint[selectedEndpoint];
+
+    if (!selectedConfig) {
+        throw new Error(`Unsupported model endpoint: ${selectedEndpoint}.`);
+    }
+
+    const { baseURL, apiKey, missingKeyMessage } = selectedConfig;
 
     if (!apiKey) {
-        throw new Error(
-            "AGENT_MODEL_API_KEY or NVIDIA_API_KEY is missing. Add the provider key to .env before running the agent."
-        );
+        throw new Error(missingKeyMessage);
     }
 
     if (typeof baseURL !== "string" || !/^https?:\/\/[^\s]+$/i.test(baseURL)) {
@@ -86,8 +113,8 @@ export function modelEndpointConfig(environment = process.env) {
     return { apiKey, baseURL };
 }
 
-function createClient(environment = process.env) {
-    const { apiKey, baseURL } = modelEndpointConfig(environment);
+function createClient(environment = process.env, endpoint = "auto") {
+    const { apiKey, baseURL } = modelEndpointConfig(environment, { endpoint });
 
     return new OpenAI({
         apiKey,
@@ -96,13 +123,13 @@ function createClient(environment = process.env) {
 }
 
 /**
- * Return the model IDs currently advertised by NVIDIA's hosted API.
+ * Return the model IDs currently advertised by the configured provider.
  *
  * Keeping this separate from generation lets the dashboard report route health
  * without sending a prompt or exposing any provider error details to the UI.
  */
-export async function listNvidiaModels({ client } = {}) {
-    const resolvedClient = client ?? createClient();
+export async function listProviderModels({ client, endpoint = "auto" } = {}) {
+    const resolvedClient = client ?? createClient(process.env, endpoint);
     const page = await resolvedClient.models.list();
 
     return (page?.data || [])
@@ -111,7 +138,7 @@ export async function listNvidiaModels({ client } = {}) {
 }
 
 function selectedModel() {
-    return process.env.NVIDIA_MODEL || DEFAULT_MODEL;
+    return process.env.OLLAMA_MODEL || DEFAULT_MODEL;
 }
 
 function renderToolList() {
@@ -198,14 +225,15 @@ Terminal safety:
 }
 
 class Nemotron {
-    constructor({ client, debug = false, model } = {}) {
+    constructor({ client, debug = false, model, endpoint = "auto" } = {}) {
         this.client = client;
         this.debug = debug;
         this.model = model;
+        this.endpoint = endpoint;
     }
 
     async generate(prompt, { history = [], signal } = {}) {
-        const client = this.client ??= createClient();
+        const client = this.client ??= createClient(process.env, this.endpoint);
         const completion = await client.chat.completions.create({
             model: this.model || selectedModel(),
             messages: [
@@ -224,11 +252,11 @@ class Nemotron {
         const message = completion.choices[0]?.message;
 
         if (!message) {
-            throw new Error("The NVIDIA model returned no message.");
+            throw new Error("The configured model returned no message.");
         }
 
         if (this.debug) {
-            console.error("[debug] NVIDIA response", {
+            console.error("[debug] model response", {
                 content: message.content,
                 hasReasoning: Boolean(message.reasoning_content),
             });
@@ -240,7 +268,7 @@ class Nemotron {
         // tool call. The call is the actionable part of that response, so it must
         // take precedence over the companion text.
         return {
-            reasoning: message.reasoning_content || "",
+            reasoning: message.reasoning_content || message.reasoning || "",
             content: toolCalls.length > 0
                 ? nativeToolContent(toolCalls)
                 : message.content || "",

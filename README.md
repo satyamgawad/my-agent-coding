@@ -1,6 +1,6 @@
 # My Coding Agent
 
-My Coding Agent is a small, safety-conscious local coding agent powered by NVIDIA Nemotron. It accepts natural-language coding instructions, chooses from a validated set of tools, and works only in a generated application workspace.
+My Coding Agent is a small, safety-conscious local coding agent powered by Ollama. It accepts natural-language coding instructions, chooses from a validated set of tools, and works only in a generated application workspace.
 
 The agent source and generated applications are deliberately separate:
 
@@ -30,45 +30,63 @@ npm install
 cp .env.example .env
 ```
 
-Set your NVIDIA API key in `.env`:
+Install [Ollama](https://ollama.com), then download the free local coding model
+once:
 
-```dotenv
-NVIDIA_API_KEY=your_nvidia_api_key_here
+```bash
+npm run setup:ollama
 ```
 
-By default, the agent routes each task across seven open-weight models. Auto
-starts routine fixes and app/website builds with Nemotron 3 Nano, uses
-Nemotron 3 Ultra for substantial full-stack or multi-file work, and reserves
-GLM-5.2, Kimi K2.6, and GPT-OSS 120B for architecture, security, migrations,
-and long-horizon tasks. The complete route also includes GPT-OSS 20B and Llama
-3.3 70B as independent open-weight fallbacks. If one provider is temporarily
-unavailable, it automatically moves to the next suitable model.
-
-To start every task with one model, add one of these optional settings:
+Auto uses `qwen2.5-coder:7b` through Ollama on your Mac. It needs no NVIDIA or
+OpenAI API key, has no per-message provider charge, and keeps project content
+on this computer. You can choose another installed model in `.env`:
 
 ```dotenv
-NVIDIA_MODEL_MODE=nano  # or: build, smart, oss, llama, kimi, oss120, ultra, glm
+OLLAMA_MODEL=qwen2.5-coder:7b
 ```
 
-To use a model not in the seven-model route, set a custom model instead:
+To add the free local Gemma 4 E2B route for general chat and reasoning,
+download it separately. The model supports multimodal workloads, but the
+current dashboard sends text tasks only:
+
+```bash
+npm run setup:gemma
+```
+
+Then select **Gemma** in the dashboard. It falls back to Qwen Coder if Gemma is
+not available. The default remains Qwen because it is better suited to editing
+and building projects.
+
+Choose `AGENT_MODEL_MODE=smart` for important changes where quality matters
+more than speed. Smart mode creates a compact implementation brief and
+independently reviews the final result before it is reported. It makes
+additional local model requests, so it is slower than Auto.
+
+Choose `AGENT_MODEL_MODE=build` when you want a stronger project-building
+workflow. Build mode produces a compact project brief and independently reviews
+the delivered result. It is best for a new application, website, dashboard, or
+tool.
+
+An optional remote OpenAI-compatible provider can be configured with
+`AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY`, and `AGENT_MODEL`. Select
+**Remote** in the dashboard only when you want to use it. If it temporarily
+fails, the agent falls back to your local Ollama model.
+
+### Muse Glimmer Power Build route
+
+If your NVIDIA API Catalog account provides Muse Glimmer 30B, set its exact
+catalog model ID and your private key in `.env`:
 
 ```dotenv
-NVIDIA_MODEL=provider/model-id
+NVIDIA_API_KEY=your_nvidia_api_key
+NVIDIA_MUSE_MODEL=the-exact-nvidia-catalog-model-id
+NVIDIA_MUSE_BASE_URL=https://integrate.api.nvidia.com/v1
 ```
 
-Use either `NVIDIA_MODEL_MODE` or `NVIDIA_MODEL`; leave both out to use Auto.
-
-Choose `NVIDIA_MODEL_MODE=smart` for important changes where quality matters
-more than speed. Smart mode starts with the deep-work route, creates a compact
-implementation brief, and independently reviews the final result before it is
-reported. It makes additional model requests, so it is slower and uses more
-credits than Auto.
-
-Choose `NVIDIA_MODEL_MODE=build` when you want a stronger project-building
-workflow. Build mode starts with the implementation-focused route, produces a
-compact project brief, and independently reviews the delivered result. It is
-best for a new application, website, dashboard, or tool and uses more model
-work than Auto.
+Choose **Power Build · Muse Glimmer 30B** for demanding multimodal coding and
+reasoning work. The route is optional: transient NVIDIA errors automatically
+fall back to local Qwen Coder. It is not a free unlimited production service;
+keep Qwen as your private no-cost baseline.
 
 For unusually large multi-file tasks, you can raise the agent's step budget
 from its default of 30 to a value between 10 and 100:
@@ -97,7 +115,7 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local project workspace and NVIDIA configuration as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto starts routine work on Nemotron 3 Nano, recognizes full-project audits and agent upgrades as deep-work tasks, and moves to stronger open-weight routes when needed; you can still select any lane explicitly. Select **Smart** for a deeper planning and independent-review pass; your selected model mode is kept in this browser for later dashboard visits, and its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local Ollama model and project workspace as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto uses Qwen Coder locally. Select **Smart** for a deeper planning and independent-review pass; your selected model mode is kept in this browser for later dashboard visits, and its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The dashboard separates **Chat** from **Projects**. Chat is for questions and
 ideas and cannot inspect or alter project files. Projects is where the agent
@@ -113,7 +131,7 @@ The repository also includes a local VS Code extension in
 [`vscode-extension/`](vscode-extension/). It opens a focused agent panel in VS
 Code, submits tasks to the same local dashboard, displays live task progress,
 and lets you select the shared project or open the full browser workspace. It
-does not run another agent server or store your NVIDIA API key.
+does not run another agent server or store provider credentials.
 
 Start the dashboard first, then package and install the extension:
 
@@ -277,11 +295,11 @@ pass rate, steps, duration, and verification summary. This baseline never calls
 the model API or spends model credits; it validates the agent workflow rather
 than measuring a live model's coding ability.
 
-Use **Run live model** only when you want to spend credits measuring the
-configured NVIDIA model route on the same scenarios. Live runs remain isolated
+Use **Run live model** only when you want to measure the configured local or
+optional remote model route on the same scenarios. Live runs remain isolated
 from your generated projects, but their results are real model measurements and
-can fail because of model availability, task complexity, or an incomplete
-implementation.
+can fail because of local model quality, availability, task complexity, or an
+incomplete implementation.
 
 ### Private Docker hosting
 
@@ -290,10 +308,9 @@ the service as an unprivileged Linux user, keeps credentials out of the image,
 and requires a dashboard password when the UI is exposed beyond `127.0.0.1`.
 It is not a public multi-user code-execution service.
 
-1. Create `.env` from `.env.example`, then set both secrets:
+1. Create `.env` from `.env.example`, then set a dashboard password:
 
    ```dotenv
-   NVIDIA_API_KEY=your_nvidia_api_key_here
    AGENT_UI_PASSWORD=use-a-long-unique-password-of-at-least-16-characters
    ```
 
@@ -310,10 +327,9 @@ It is not a public multi-user code-execution service.
    ```
 
 3. Open [http://localhost:3000](http://localhost:3000). When the browser asks,
-   use username `agent` and the dashboard password. For a cloud host, store
-   `NVIDIA_API_KEY` and `AGENT_UI_PASSWORD` as platform secrets, attach
-   persistent storage at `/app/projects`, expose port `3000`, and place the
-   service behind HTTPS.
+   use username `agent` and the dashboard password. Ollama must run beside the
+   agent wherever the dashboard runs. For a cloud host, that means a paid
+   GPU-backed model service; use the local setup for the free private option.
 
 Do not mount your home directory, the Docker socket, or other sensitive host
 paths into this container. The **Run project** preview is intentionally a
@@ -324,23 +340,9 @@ control in front of the dashboard instead of sharing one password.
 
 ### Railway deployment
 
-This repository is configured for Railway. In Railway, create a new project
-from the `satyamgawad/my-agent-coding` GitHub repository and select the `main`
-branch. Railway will use the included Dockerfile automatically.
-
-In the service's Variables tab, add these two secrets:
-
-```text
-NVIDIA_API_KEY=your_nvidia_key
-AGENT_UI_PASSWORD=a-long-unique-password-with-at-least-16-characters
-```
-
-Then add a Railway Volume mounted at `/app/projects` so generated projects
-and its local SQLite task history survive deployments, and generate a public Railway domain. The dashboard will
-ask for username `agent` and your `AGENT_UI_PASSWORD`. Railway supplies the
-runtime port automatically; do not add `PORT`, `AGENT_UI_HOST`, or your local
-`.env` file as Railway variables. Keep the service at one replica because the
-active workspace and generated projects live on that single mounted volume.
+This repository can run on Railway, but the free Ollama setup is designed for
+your Mac. A Railway deployment needs a separately hosted model service, which
+is normally paid. Keep the agent local when you want free private AI.
 
 ### Command line
 
@@ -443,7 +445,7 @@ There is no terminal working-directory argument, shell operators, redirection, o
 The terminal allowlist removes shell injection and caller-controlled directories, but this is not a kernel-level security sandbox: npm scripts and build tools execute project code. Use generated projects and dependencies you trust; do not treat this as a safe runner for hostile code.
 
 Generated-project commands run with a minimal temporary environment, so they do
-not inherit the agent's NVIDIA, GitHub, or dashboard secrets. The production
+not inherit the agent's provider, GitHub, or dashboard secrets. The production
 Docker image also makes the agent source read-only to the unprivileged runtime;
 use a development checkout for the explicit self-improvement workflow. These
 measures reduce credential and source-tampering risk, but they do not replace a
@@ -472,7 +474,7 @@ The suite covers file operations, exact editing, project isolation, protected pa
 
 ## Limitations
 
-- The agent depends on a configured NVIDIA API key and the model's ability to select tools correctly.
+- The agent depends on Ollama running locally and the selected model's ability to select tools correctly.
 - It supports one active generated project per interactive session; use `selectProject` to switch.
 - Only the listed terminal commands are available. Applications with other build systems may need support added deliberately.
 - It does not provide browser automation, visual checks, Git operations, package publishing, deployment, or an operating-system-level sandbox.

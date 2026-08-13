@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import Nemotron, { createSystemPrompt, listNvidiaModels, modelEndpointConfig } from "../src/nemotron.js";
+import Nemotron, { createSystemPrompt, listProviderModels, modelEndpointConfig } from "../src/nemotron.js";
 import { TOOL_DEFINITIONS } from "../src/tools/index.js";
 
 function createClient(response) {
@@ -151,19 +151,52 @@ test("Nemotron accepts an explicit model override for routed tasks", async () =>
     assert.equal(requests[0].model, "z-ai/glm-5.2");
 });
 
-test("a fine-tuned OpenAI-compatible model endpoint can override NVIDIA's hosted default", () => {
+test("the local Ollama endpoint is the default and a remote compatible endpoint is optional", () => {
+    assert.deepEqual(modelEndpointConfig({}), {
+        apiKey: "ollama",
+        baseURL: "http://127.0.0.1:11434/v1",
+    });
     assert.deepEqual(modelEndpointConfig({
-        NVIDIA_API_KEY: "nvidia-key",
-        AGENT_MODEL_API_KEY: "nim-key",
-        AGENT_MODEL_BASE_URL: "https://nim.example.test/v1",
+        AGENT_MODEL_API_KEY: "provider-key",
+        AGENT_MODEL_BASE_URL: "https://provider.example.test/v1",
     }), {
-        apiKey: "nim-key",
-        baseURL: "https://nim.example.test/v1",
+        apiKey: "provider-key",
+        baseURL: "https://provider.example.test/v1",
     });
     assert.throws(
-        () => modelEndpointConfig({ NVIDIA_API_KEY: "key", AGENT_MODEL_BASE_URL: "not-a-url" }),
+        () => modelEndpointConfig({ AGENT_MODEL_API_KEY: "key", AGENT_MODEL_BASE_URL: "not-a-url" }),
         /AGENT_MODEL_BASE_URL/
     );
+    assert.throws(
+        () => modelEndpointConfig({ AGENT_MODEL_BASE_URL: "https://provider.example.test/v1" }),
+        /AGENT_MODEL_API_KEY/
+    );
+});
+
+test("Muse uses the dedicated NVIDIA endpoint without affecting the Ollama fallback", () => {
+    assert.deepEqual(modelEndpointConfig({
+        NVIDIA_API_KEY: "nvidia-key",
+    }, { endpoint: "nvidiaMuse" }), {
+        apiKey: "nvidia-key",
+        baseURL: "https://integrate.api.nvidia.com/v1",
+    });
+    assert.throws(
+        () => modelEndpointConfig({}, { endpoint: "nvidiaMuse" }),
+        /NVIDIA_API_KEY/
+    );
+});
+
+test("a non-local Ollama-compatible endpoint must provide its own key", () => {
+    assert.throws(
+        () => modelEndpointConfig({ OLLAMA_BASE_URL: "https://ollama.example.test/v1" }, { endpoint: "ollama" }),
+        /OLLAMA_API_KEY/
+    );
+    assert.deepEqual(modelEndpointConfig({
+        OLLAMA_BASE_URL: "http://127.0.0.1:12000/v1",
+    }, { endpoint: "ollama" }), {
+        apiKey: "ollama",
+        baseURL: "http://127.0.0.1:12000/v1",
+    });
 });
 
 test("Nemotron forwards a cancellation signal to the provider request", async () => {
@@ -187,9 +220,9 @@ test("Nemotron forwards a cancellation signal to the provider request", async ()
     assert.equal(calls[0].options.signal, controller.signal);
 });
 
-test("Nemotron lists hosted model IDs without sending a generation request", async () => {
+test("the model client lists provider model IDs without sending a generation request", async () => {
     let calls = 0;
-    const models = await listNvidiaModels({
+    const models = await listProviderModels({
         client: {
             models: {
                 async list() {

@@ -66,8 +66,8 @@ export function createAgent(debug) {
     const workspaceManager = new WorkspaceManager({ agentRoot: process.cwd() });
     const report = createReporter(debug);
     const model = new ModelRouter({
-        mode: process.env.NVIDIA_MODEL_MODE,
-        createModel: (profile) => new Nemotron({ debug, model: profile.id }),
+        mode: process.env.AGENT_MODEL_MODE,
+        createModel: (profile) => new Nemotron({ debug, model: profile.id, endpoint: profile.endpoint }),
         onRoute: ({ profile, fallback }) => {
             report({
                 message: `model: ${fallback ? "switched to" : "using"} ${profile.label}`,

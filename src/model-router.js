@@ -1,153 +1,112 @@
 import Nemotron from "./nemotron.js";
 
+export const DEFAULT_LOCAL_MODEL = "qwen2.5-coder:7b";
+export const DEFAULT_GEMMA_MODEL = "gemma4:e2b";
+
 export const MODEL_PROFILES = Object.freeze({
-    nano: Object.freeze({
-        id: "nvidia/nemotron-3-nano-30b-a3b",
-        label: "Nemotron 3 Nano",
-        summary: "Fast lane",
+    local: Object.freeze({
+        id: DEFAULT_LOCAL_MODEL,
+        label: "Qwen 2.5 Coder 7B",
+        summary: "Free local Ollama coding model",
     }),
-    oss: Object.freeze({
-        id: "openai/gpt-oss-20b",
-        label: "GPT-OSS 20B",
-        summary: "Responsive open-weight lane",
-    }),
-    llama: Object.freeze({
-        id: "meta/llama-3.3-70b-instruct",
-        label: "Llama 3.3 70B",
-        summary: "General coding lane",
-    }),
-    kimi: Object.freeze({
-        id: "moonshotai/kimi-k2.6",
-        label: "Kimi K2.6",
-        summary: "Agentic coding lane",
-    }),
-    oss120: Object.freeze({
-        id: "openai/gpt-oss-120b",
-        label: "GPT-OSS 120B",
-        summary: "Deep open-weight lane",
-    }),
-    ultra: Object.freeze({
-        id: "nvidia/nemotron-3-ultra-550b-a55b",
-        label: "Nemotron 3 Ultra",
-        summary: "Balanced lane",
-    }),
-    glm: Object.freeze({
-        id: "z-ai/glm-5.2",
-        label: "GLM-5.2",
-        summary: "Deep-work lane",
+    gemma: Object.freeze({
+        id: DEFAULT_GEMMA_MODEL,
+        label: "Gemma 4 E2B",
+        summary: "Free local Ollama chat, vision, audio, and reasoning model",
     }),
 });
 
-// "flash" is retained only so an older NVIDIA_MODEL_MODE=flash setting keeps
-// working after DeepSeek's removal. The dashboard exposes the clear "nano"
-// name and all new model selections.
-const LEGACY_MODEL_MODE_ALIASES = Object.freeze({ flash: "nano" });
-export const MODEL_MODES = new Set([
-    "auto", "build", "smart", "nano", "oss", "llama", "kimi", "oss120", "ultra", "glm", "custom", "flash",
-]);
+// Keep previously saved dashboard preferences working after the move away from
+// hosted routes. They now resolve to the single reliable local route.
+const LEGACY_MODEL_MODE_ALIASES = Object.freeze({
+    flash: "local",
+    lightning: "local",
+    nano: "local",
+    oss: "local",
+    llama: "local",
+    kimi: "local",
+    oss120: "local",
+    ultra: "local",
+    glm: "local",
+});
+
+export const MODEL_MODES = new Set(["auto", "build", "smart", "local", "gemma", "power", "custom"]);
 
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
 
-// Keep Auto responsive for everyday work. A normal app or website request
-// starts with Nano; larger open-weight lanes are reserved for tasks that
-// explicitly signal more coordination or reasoning.
-const DEEP_WORK_TASK = /\b(architect(?:ure)?|long[- ]horizon|migrat|rewrite|security|system design|threat model)\b/i;
-const PROJECT_WIDE_TASK = /\b(?:whole|entire|full)\s+(?:project|codebase|repository)\b|\b(?:audit|code review|security review|regression|test coverage)\b|\b(?:polish|upgrade|improve|harden|refactor)\b[\s\S]{0,64}\b(?:agent|project|codebase|repository|application|dashboard)\b/i;
-const SUBSTANTIAL_TASK = /\b(authentication|database|deploy|full[- ]stack|large|multi[- ]file|refactor|integration|performance)\b/i;
-const DEEP_WORK_LENGTH = 1_200;
-
-function routeForTask(task) {
-    if (task.length > DEEP_WORK_LENGTH || DEEP_WORK_TASK.test(task) || PROJECT_WIDE_TASK.test(task)) {
-        return [
-            MODEL_PROFILES.glm,
-            MODEL_PROFILES.kimi,
-            MODEL_PROFILES.oss120,
-            MODEL_PROFILES.ultra,
-            MODEL_PROFILES.llama,
-            MODEL_PROFILES.oss,
-            MODEL_PROFILES.nano,
-        ];
-    }
-
-    if (SUBSTANTIAL_TASK.test(task)) {
-        return [
-            MODEL_PROFILES.ultra,
-            MODEL_PROFILES.kimi,
-            MODEL_PROFILES.glm,
-            MODEL_PROFILES.oss120,
-            MODEL_PROFILES.llama,
-            MODEL_PROFILES.oss,
-            MODEL_PROFILES.nano,
-        ];
-    }
-
-    return [
-        MODEL_PROFILES.nano,
-        MODEL_PROFILES.oss,
-        MODEL_PROFILES.llama,
-        MODEL_PROFILES.ultra,
-        MODEL_PROFILES.glm,
-        MODEL_PROFILES.kimi,
-        MODEL_PROFILES.oss120,
-    ];
+export function customModelFromEnvironment(environment = process.env) {
+    return environment.AGENT_MODEL || null;
 }
 
-function routeForMode(mode, task, customModel) {
-    if (mode === "custom") {
-        return [{
-            id: customModel,
-            label: customModel,
-            summary: "Custom model",
-        }];
+export function museModelFromEnvironment(environment = process.env) {
+    return environment.NVIDIA_MUSE_MODEL || environment.MUSE_MODEL || null;
+}
+
+function localProfile(modelId) {
+    const id = typeof modelId === "string" && modelId.trim()
+        ? modelId.trim()
+        : DEFAULT_LOCAL_MODEL;
+
+    return {
+        id,
+        label: id === DEFAULT_LOCAL_MODEL ? MODEL_PROFILES.local.label : id,
+        summary: id === DEFAULT_LOCAL_MODEL
+            ? MODEL_PROFILES.local.summary
+            : "Local Ollama model",
+    };
+}
+
+function gemmaProfile(modelId) {
+    const id = typeof modelId === "string" && modelId.trim()
+        ? modelId.trim()
+        : DEFAULT_GEMMA_MODEL;
+
+    return {
+        id,
+        label: id === DEFAULT_GEMMA_MODEL ? MODEL_PROFILES.gemma.label : id,
+        summary: id === DEFAULT_GEMMA_MODEL
+            ? MODEL_PROFILES.gemma.summary
+            : "Local Ollama chat and reasoning model",
+        endpoint: "ollama",
+    };
+}
+
+function localCodingProfile(modelId) {
+    return { ...localProfile(modelId), endpoint: "ollama" };
+}
+
+function routeForMode(mode, customModel, museModel, localModel, gemmaModel) {
+    const local = localCodingProfile(localModel);
+
+    if (mode === "gemma") {
+        const gemma = gemmaProfile(gemmaModel);
+        return gemma.id === local.id ? [local] : [gemma, local];
     }
 
-    if (mode === "auto") {
-        return routeForTask(task);
+    if (mode === "power") {
+        const muse = {
+            id: museModel,
+            label: "Muse Glimmer 30B",
+            summary: "NVIDIA-hosted multimodal reasoning and coding model",
+            endpoint: "nvidiaMuse",
+        };
+        return muse.id === local.id ? [local] : [muse, local];
     }
 
-    if (mode === "smart") {
-        if (customModel) {
-            return [{
-                id: customModel,
-                label: customModel,
-                summary: "Smart fine-tuned custom model",
-            }];
-        }
-
-        // Smart mode spends an extra model call on an implementation brief and
-        // another on an independent final review. Start it on the deepest
-        // route so those deliberate passes improve judgement, not only speed.
-        return [
-            MODEL_PROFILES.glm,
-            MODEL_PROFILES.kimi,
-            MODEL_PROFILES.oss120,
-            MODEL_PROFILES.ultra,
-            MODEL_PROFILES.llama,
-            MODEL_PROFILES.oss,
-            MODEL_PROFILES.nano,
-        ];
+    if (mode !== "custom") {
+        return [local];
     }
 
-    if (mode === "build") {
-        // Project builds benefit from a capable implementation lane and the
-        // same fallback breadth as deep work, without making that cost the
-        // default for quick questions and routine repairs.
-        return [
-            MODEL_PROFILES.ultra,
-            MODEL_PROFILES.kimi,
-            MODEL_PROFILES.glm,
-            MODEL_PROFILES.oss120,
-            MODEL_PROFILES.llama,
-            MODEL_PROFILES.oss,
-            MODEL_PROFILES.nano,
-        ];
-    }
+    const remote = {
+        id: customModel,
+        label: customModel,
+        summary: "Custom remote model",
+        endpoint: "custom",
+    };
 
-    const selected = MODEL_PROFILES[mode];
-    return [
-        selected,
-        ...routeForTask(task).filter((profile) => profile.id !== selected.id),
-    ];
+    // A configured remote model remains optional. If it is unavailable, the
+    // agent can continue privately on the local model instead of stopping.
+    return remote.id === local.id ? [local] : [remote, local];
 }
 
 function errorStatus(error) {
@@ -173,8 +132,11 @@ function isUnavailableModelError(error) {
 export default class ModelRouter {
     constructor({
         mode,
-        customModel = process.env.NVIDIA_MODEL,
-        createModel = (profile) => new Nemotron({ model: profile.id }),
+        customModel = customModelFromEnvironment(),
+        museModel = museModelFromEnvironment(),
+        localModel = process.env.OLLAMA_MODEL || DEFAULT_LOCAL_MODEL,
+        gemmaModel = process.env.OLLAMA_GEMMA_MODEL || DEFAULT_GEMMA_MODEL,
+        createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
         onRoute,
         unavailableProfiles = new Map(),
         now = () => Date.now(),
@@ -187,10 +149,17 @@ export default class ModelRouter {
         }
 
         if (this.mode === "custom" && !customModel) {
-            throw new Error("NVIDIA_MODEL is required when NVIDIA_MODEL_MODE is custom.");
+            throw new Error("AGENT_MODEL is required when the custom model route is selected.");
+        }
+
+        if (this.mode === "power" && !museModel) {
+            throw new Error("NVIDIA_MUSE_MODEL is required when the Power Build route is selected.");
         }
 
         this.customModel = customModel;
+        this.museModel = museModel;
+        this.localModel = localModel;
+        this.gemmaModel = gemmaModel;
         this.createModel = createModel;
         this.onRoute = onRoute;
         this.unavailableProfiles = unavailableProfiles;
@@ -214,10 +183,7 @@ export default class ModelRouter {
         const available = route.filter((profile) => {
             const unavailableUntil = this.unavailableProfiles.get(profile.id);
 
-            if (!unavailableUntil) {
-                return true;
-            }
-
+            if (!unavailableUntil) return true;
             if (unavailableUntil <= now) {
                 this.unavailableProfiles.delete(profile.id);
                 return true;
@@ -229,13 +195,11 @@ export default class ModelRouter {
         return available.length > 0 ? available : route;
     }
 
-    selectRoute(task) {
-        if (this.route) {
-            return this.activeProfile;
-        }
+    selectRoute() {
+        if (this.route) return this.activeProfile;
 
         this.route = this.routeWithAvailableProfiles(
-            routeForMode(this.mode, task, this.customModel)
+            routeForMode(this.mode, this.customModel, this.museModel, this.localModel, this.gemmaModel)
         );
         this.notifyRoute(false);
         return this.activeProfile;
@@ -259,11 +223,7 @@ export default class ModelRouter {
     }
 
     async generate(prompt, options) {
-        this.selectRoute(
-            typeof options?.task === "string" && options.task.trim()
-                ? options.task
-                : prompt
-        );
+        this.selectRoute();
 
         while (true) {
             try {

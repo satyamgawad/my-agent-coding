@@ -3,30 +3,23 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#080d1f">
+    <meta name="theme-color" content="#030407">
     <title>Satyam's Agent</title>
-    <script>
-      window.tailwind = window.tailwind || {};
-      tailwind.config = {
-        corePlugins: { preflight: false },
-        theme: {
-          extend: {
-            colors: { ink: "#f8fafc", signal: "#8bffcf", glow: "#9b8cff" },
-            boxShadow: { glow: "0 0 48px rgba(139, 255, 207, .18)" }
-          }
-        }
-      };
-    </script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased">
-    <div class="ambient-field fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
-      <span class="ambient-orb ambient-orb-one"></span>
-      <span class="ambient-orb ambient-orb-two"></span>
-      <span class="ambient-grid"></span>
+  <body>
+    <div class="cosmic-backdrop" aria-hidden="true">
+      <span class="star-field star-field-near"></span>
+      <span class="star-field star-field-far"></span>
+      <div class="orbital-system">
+        <span class="orbit orbit-wide"></span>
+        <span class="orbit orbit-close"></span>
+        <span class="planet planet-blue"></span>
+        <span class="planet planet-amber"></span>
+        <span class="moon"></span>
+      </div>
     </div>
-    <main class="shell relative isolate">
+    <main class="shell">
       <header class="topbar relative z-10">
         <div class="brand" aria-label="My Coding Agent">
           <span class="brand-mark" aria-hidden="true">✦</span>
@@ -128,17 +121,13 @@
               <p class="model-health" id="model-health" role="status">Checking model availability…</p>
             </div>
             <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
-              <option value="auto" selected>Auto · all seven</option>
+              <option value="auto" selected>Auto · Qwen Coder</option>
               <option value="build">Build · plan + deep review</option>
               <option value="smart">Smart · plan + independent review</option>
-              <option value="custom">Fine-tuned · custom endpoint</option>
-              <option value="nano">Fast · Nemotron 3 Nano</option>
-              <option value="oss">Responsive · GPT-OSS 20B</option>
-              <option value="llama">General · Llama 3.3 70B</option>
-              <option value="kimi">Agentic · Kimi K2.6</option>
-              <option value="oss120">Deep · GPT-OSS 120B</option>
-              <option value="ultra">Balanced · Nemotron Ultra</option>
-              <option value="glm">Deep work · GLM-5.2</option>
+              <option value="local">Local · Qwen Coder</option>
+              <option value="gemma">Gemma · local chat + vision</option>
+              <option value="power">Power Build · Muse Glimmer 30B</option>
+              <option value="custom">Remote · custom endpoint</option>
             </select>
           </div>
 
@@ -317,7 +306,7 @@
           <strong id="evaluation-pass-rate">—</strong>
         </div>
         <ul class="agent-evaluation-results" id="evaluation-results" aria-label="Agent evaluation results"></ul>
-        <p class="evaluation-scope">Runs isolated checks for application build, safe existing-project changes, and protected-file handling. <strong>Run live model</strong> uses the selected NVIDIA model route and can use API credits; the baseline does not.</p>
+        <p class="evaluation-scope">Runs isolated checks for application build, safe existing-project changes, and protected-file handling. <strong>Run live model</strong> uses your selected local or custom model route; the baseline never calls a model.</p>
       </section>
 
       <section class="task-history-card" aria-labelledby="task-history-title">

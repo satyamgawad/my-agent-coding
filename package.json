@@ -1,11 +1,13 @@
 {
   "name": "my-agent",
   "version": "1.0.0",
-  "description": "A small, safety-conscious local coding agent powered by NVIDIA Nemotron.",
+  "description": "A small, safety-conscious local coding agent powered by Ollama.",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "ui": "node src/ui-server.js",
+    "setup:ollama": "ollama pull qwen2.5-coder:7b",
+    "setup:gemma": "ollama pull gemma4:e2b",
     "test": "node --test test/*.test.js vscode-extension/test/*.test.cjs",
     "prepare:finetune": "node scripts/prepare-finetune-dataset.js",
     "evaluate:finetune": "node scripts/evaluate-finetuned-model.js"

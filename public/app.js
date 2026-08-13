@@ -57,6 +57,7 @@ const resultCard = document.querySelector(".result-card");
 const resultTitle = document.querySelector("#result-title");
 const resultText = document.querySelector("#result-text");
 const resultMark = document.querySelector("#result-mark");
+const cosmicBackdrop = document.querySelector(".cosmic-backdrop");
 
 const toolLabels = {
   createProject: "Created a project",
@@ -79,17 +80,13 @@ const toolLabels = {
 };
 
 const modelNotes = {
-  auto: "Auto starts with the quick open-weight lane and moves through the strongest matching fallback when needed.",
-  build: "Build uses a stronger implementation lane, creates a project brief, and independently reviews the delivered result.",
-  smart: "Uses a deep-work route, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
-  custom: "Uses the custom model configured in your private environment, such as a fine-tuned NVIDIA NIM deployment.",
-  nano: "Start with NVIDIA's compact open-weight coding and reasoning model.",
-  oss: "Use OpenAI's lightweight open-weight reasoning model for responsive coding work.",
-  llama: "Use Meta's open-weight general coding and instruction model.",
-  kimi: "Use Moonshot's open-weight agentic coding model for longer tool-driven work.",
-  oss120: "Use the largest GPT-OSS route for deep open-weight reasoning.",
-  ultra: "Start with NVIDIA's frontier open-weight coding and tool-use model.",
-  glm: "Start with maximum depth for complex, long-horizon work, with broad open-weight fallbacks.",
+  auto: "Auto uses the free local Qwen coding model through Ollama.",
+  build: "Build uses the local coding model, creates a project brief, and independently reviews the delivered result.",
+  smart: "Uses the local coding model, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
+  local: "Use Qwen Coder locally through Ollama. Your project content stays on this computer.",
+  gemma: "Use Gemma 4 E2B locally through Ollama for general chat and reasoning. It is multimodal-capable, while this dashboard currently sends text tasks. Qwen Coder remains the fallback.",
+  power: "Use NVIDIA-hosted Muse Glimmer 30B for demanding project work. It needs NVIDIA_MUSE_MODEL and NVIDIA_API_KEY; Qwen Coder is the fallback.",
+  custom: "Uses the optional remote model configured in your private environment, then falls back to your local model if it is unavailable.",
 };
 
 let workspaceContext = { project: null };
@@ -1822,6 +1819,23 @@ for (const suggestion of document.querySelectorAll("[data-build-prompt]")) {
     projectTaskInput.focus();
   });
 }
+
+function updateCosmicParallax() {
+  if (!cosmicBackdrop) return;
+  const offset = Math.min(window.scrollY * 0.16, 180);
+  cosmicBackdrop.style.setProperty("--scroll-offset", `${offset}px`);
+}
+
+let cosmicFrame = null;
+window.addEventListener("scroll", () => {
+  if (cosmicFrame !== null) return;
+  cosmicFrame = window.requestAnimationFrame(() => {
+    updateCosmicParallax();
+    cosmicFrame = null;
+  });
+}, { passive: true });
+
+updateCosmicParallax();
 
 restoreModelModePreference();
 restoreWorkspaceView();

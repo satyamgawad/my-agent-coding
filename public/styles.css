@@ -615,3 +615,138 @@ textarea:focus-visible { background: rgba(139, 197, 255, .035); box-shadow: inse
 @media (prefers-reduced-motion: reduce) {
   .ambient-orb, .brand-mark::after, .status-dot, .workspace-view.is-active, .constellation-ring, .constellation-core, .constellation-node, .chat-turn, .conversation-turn, .result-card::before, .activity-state.is-working { animation: none !important; }
 }
+
+/* Calm cosmic layer. It stays behind the workspace and shifts gently as the
+   page moves, so the background feels alive without competing with the work. */
+:root {
+  --canvas: #030407;
+  --surface: #0c0e14;
+  --surface-soft: #151923;
+  --line: rgba(231, 234, 243, .13);
+  --ink: #f5f5f2;
+  --muted: #a2a8b7;
+  --acid: #dbe77a;
+  --aqua: #b2c6e8;
+  --coral: #f49a88;
+  --shadow: 0 18px 54px rgba(0, 0, 0, .42);
+}
+
+html, body { background: var(--canvas); }
+body {
+  overflow-x: hidden;
+  background: #030407;
+}
+
+.cosmic-backdrop {
+  --scroll-offset: 0px;
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 46% at 74% 5%, rgba(44, 52, 83, .26), transparent 64%),
+    radial-gradient(ellipse 55% 44% at 4% 86%, rgba(34, 39, 62, .18), transparent 67%),
+    #030407;
+}
+
+.star-field {
+  position: absolute;
+  inset: -14%;
+  opacity: .76;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, .82) 0 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(180, 198, 255, .58) 0 1px, transparent 1.7px),
+    radial-gradient(circle, rgba(255, 245, 215, .52) 0 1px, transparent 1.6px);
+}
+.star-field-near {
+  background-size: 123px 137px, 197px 179px, 251px 229px;
+  background-position: 24px calc(8px - var(--scroll-offset)), 61px calc(36px - var(--scroll-offset)), 7px calc(91px - var(--scroll-offset));
+}
+.star-field-far {
+  opacity: .34;
+  background-size: 271px 233px, 331px 317px, 397px 367px;
+  background-position: 15px calc(72px + var(--scroll-offset)), 156px calc(27px + var(--scroll-offset)), 78px calc(143px + var(--scroll-offset));
+}
+
+.orbital-system {
+  position: absolute;
+  top: -158px;
+  right: -80px;
+  width: min(62vw, 760px);
+  aspect-ratio: 1;
+  opacity: .73;
+  transform: translate3d(0, calc(var(--scroll-offset) * .34), 0);
+  transition: transform .12s linear;
+}
+.orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(207, 216, 246, .15);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-25deg);
+}
+.orbit-wide { width: 88%; height: 38%; }
+.orbit-close { width: 57%; height: 23%; border-color: rgba(207, 216, 246, .19); }
+.planet, .moon { position: absolute; border-radius: 50%; }
+.planet-blue {
+  top: 47%; left: 8%; width: 15px; height: 15px;
+  background: #9aaee8; box-shadow: 0 0 22px rgba(154, 174, 232, .55);
+}
+.planet-amber {
+  top: 39%; right: 13%; width: 9px; height: 9px;
+  background: #dfc185; box-shadow: 0 0 16px rgba(223, 193, 133, .52);
+}
+.moon {
+  top: 22%; left: 43%; width: clamp(96px, 15vw, 176px); aspect-ratio: 1;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 31% 27%, rgba(255,255,255,.26) 0 5%, transparent 5.6%),
+    radial-gradient(circle at 58% 68%, rgba(0,0,0,.22) 0 11%, transparent 11.8%),
+    radial-gradient(circle at 42% 51%, rgba(0,0,0,.18) 0 7%, transparent 7.8%),
+    radial-gradient(circle at 35% 29%, #e0e1dc, #aeb1b4 57%, #747982 100%);
+  box-shadow: inset -22px -13px 33px rgba(12, 14, 20, .45), 0 0 60px rgba(191, 202, 232, .14);
+}
+
+.shell { position: relative; z-index: 1; }
+.topbar {
+  position: sticky;
+  top: 16px;
+  z-index: 10;
+  padding: 8px 12px;
+  border: 1px solid rgba(235, 237, 244, .12);
+  border-radius: 14px;
+  background: rgba(5, 6, 10, .82);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .34);
+  backdrop-filter: blur(14px);
+}
+.brand-mark { color: #08090d; background: #eceee8; border-radius: 50%; }
+.workspace-switcher { background: rgba(255, 255, 255, .035); }
+.workspace-switch.is-active { color: #090a0d; background: #eceee8; }
+.status-dot { background: #c5d7ff; box-shadow: 0 0 0 3px rgba(197, 215, 255, .1); }
+.intro { padding-top: 86px; }
+h1 em { color: #e2e6ec; }
+.eyebrow, .muted-label { color: #c1cee4; }
+.chat-card, .chat-guide, .task-card, .workspace-card, .activity-card, .result-card, .conversation-card, .agent-evaluation-card, .task-history-card, .github-card {
+  border-color: rgba(233, 235, 242, .13);
+  background: rgba(12, 14, 20, .9);
+  box-shadow: var(--shadow);
+}
+.chat-guide, .result-card { background: rgba(15, 18, 27, .91); }
+.run-button { color: #090a0c; background: #e4e8df; box-shadow: none; }
+.run-button:hover { box-shadow: 0 8px 20px rgba(236, 239, 244, .13); }
+.model-control select { border-color: rgba(214, 222, 242, .33); background: #151923; }
+.suggestions button:hover, .suggestions button:focus-visible { border-color: #c7d4ed; background: rgba(190, 205, 235, .08); }
+.result-card::before, .result-card::after { border-color: rgba(215, 224, 244, .11); animation: none; }
+.result-mark { color: #dce8ff; text-shadow: none; }
+.answer-content, .result-text { color: #e4e7ee; }
+
+@media (max-width: 760px) {
+  .orbital-system { top: -54px; right: -118px; width: 92vw; opacity: .5; }
+  .topbar { top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbital-system { transition: none; }
+}

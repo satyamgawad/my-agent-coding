@@ -91,7 +91,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     const stream = await task.text();
     assert.match(stream, /event: ready/);
     assert.match(stream, /event: model/);
-    assert.match(stream, /Nemotron 3 Nano/);
+    assert.match(stream, /Qwen 2\.5 Coder 7B/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
 
@@ -100,7 +100,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.equal(historyBody.records.length, 1);
     assert.equal(historyBody.records[0].status, "complete");
     assert.equal(historyBody.records[0].project, "notes-app");
-    assert.equal(historyBody.records[0].model, "Nemotron 3 Nano");
+    assert.equal(historyBody.records[0].model, "Qwen 2.5 Coder 7B");
     assert.equal(Object.hasOwn(historyBody.records[0], "task"), false);
 
     const followUp = await fetch(`${baseUrl}/api/tasks`, {
@@ -825,8 +825,14 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
     assert.match(page, /value="build">Build · plan \+ deep review/);
+    assert.match(page, /value="local">Local · Qwen Coder/);
+    assert.match(page, /value="gemma">Gemma · local chat \+ vision/);
+    assert.match(page, /value="power">Power Build · Muse Glimmer 30B/);
     assert.match(page, /data-build-prompt/);
     assert.match(script, /modelNotes\.build/);
+    assert.match(script, /local: "Use Qwen Coder locally/);
+    assert.match(script, /gemma: "Use Gemma 4 E2B locally/);
+    assert.match(script, /power: "Use NVIDIA-hosted Muse Glimmer 30B/);
     assert.match(script, /purpose === "chat" \? "auto" : modelMode\.value/);
 });
 
@@ -840,13 +846,17 @@ test("the dashboard formats agent answers without rendering raw HTML break tags"
     assert.match(script, /renderAnswerText\(resultText, text\)/);
 });
 
-test("the dashboard loads Tailwind utilities and its animated visual layer", () => {
+test("the dashboard renders a scrolling moon and solar-system background", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const styles = fs.readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
-    assert.match(page, /https:\/\/cdn\.tailwindcss\.com/);
-    assert.match(page, /class="ambient-field/);
-    assert.match(styles, /@keyframes drift-orb/);
+    assert.doesNotMatch(page, /https:\/\/cdn\.tailwindcss\.com/);
+    assert.match(page, /class="cosmic-backdrop"/);
+    assert.match(page, /class="moon"/);
+    assert.match(styles, /\.orbital-system/);
+    assert.match(script, /function updateCosmicParallax/);
+    assert.match(script, /window\.addEventListener\("scroll"/);
     assert.match(styles, /prefers-reduced-motion/);
 });
 

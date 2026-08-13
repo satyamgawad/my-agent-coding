@@ -23,11 +23,21 @@ test("model health maps the provider catalog onto every configured route", async
 });
 
 test("model health distinguishes degraded and unavailable routes", async () => {
+    const profiles = {
+        ...MODEL_PROFILES,
+        optional: {
+            id: "another-local-model",
+            label: "Optional local model",
+            summary: "Test-only route",
+        },
+    };
     const degraded = new ModelHealth({
-        listModels: async () => [MODEL_PROFILES.ultra.id],
+        listModels: async () => [MODEL_PROFILES.local.id],
+        profiles,
     });
     const unavailable = new ModelHealth({
         listModels: async () => [],
+        profiles,
     });
 
     const degradedResult = await degraded.check();
@@ -36,9 +46,9 @@ test("model health distinguishes degraded and unavailable routes", async () => {
     assert.equal(degradedResult.status, "degraded");
     assert.deepEqual(
         degradedResult.models.map(({ mode, available }) => ({ mode, available })),
-        Object.entries(MODEL_PROFILES).map(([mode, profile]) => ({
+        Object.entries(profiles).map(([mode, profile]) => ({
             mode,
-            available: profile.id === MODEL_PROFILES.ultra.id,
+            available: profile.id === MODEL_PROFILES.local.id,
         }))
     );
     assert.equal(unavailableResult.status, "unavailable");
@@ -51,7 +61,7 @@ test("model health caches successful checks until its TTL expires", async () => 
     const health = new ModelHealth({
         listModels: async () => {
             calls += 1;
-            return [MODEL_PROFILES.nano.id];
+            return [MODEL_PROFILES.local.id];
         },
         ttlMs: 1_000,
         now: () => now,
@@ -95,7 +105,7 @@ test("model health can explicitly bypass a valid cached catalog", async () => {
     const health = new ModelHealth({
         listModels: async () => {
             calls += 1;
-            return [MODEL_PROFILES.nano.id];
+            return [MODEL_PROFILES.local.id];
         },
     });
 
