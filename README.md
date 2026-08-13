@@ -79,14 +79,16 @@ catalog model ID and your private key in `.env`:
 
 ```dotenv
 NVIDIA_API_KEY=your_nvidia_api_key
-NVIDIA_MUSE_MODEL=the-exact-nvidia-catalog-model-id
+NVIDIA_MUSE_MODEL=meta/muse-glimmer-30b
 NVIDIA_MUSE_BASE_URL=https://integrate.api.nvidia.com/v1
 ```
 
 Choose **Power Build · Muse Glimmer 30B** for demanding multimodal coding and
 reasoning work. The route is optional: transient NVIDIA errors automatically
 fall back to local Qwen Coder. It is not a free unlimited production service;
-keep Qwen as your private no-cost baseline.
+keep Qwen as your private no-cost baseline. If `NVIDIA_MUSE_MODEL` is omitted,
+the same current NVIDIA catalog ID is selected automatically whenever
+`NVIDIA_API_KEY` is present.
 
 For unusually large multi-file tasks, you can raise the agent's step budget
 from its default of 30 to a value between 10 and 100:

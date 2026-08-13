@@ -4,6 +4,7 @@ import ModelRouter, {
     customModelFromEnvironment,
     DEFAULT_LOCAL_MODEL,
     DEFAULT_GEMMA_MODEL,
+    DEFAULT_NVIDIA_MUSE_MODEL,
     MODEL_PROFILES,
     museModelFromEnvironment,
 } from "../src/model-router.js";
@@ -187,6 +188,7 @@ test("only the provider-neutral environment variable enables a custom model", ()
     assert.equal(customModelFromEnvironment({ NVIDIA_MODEL: "legacy/model" }), null);
     assert.equal(museModelFromEnvironment({ NVIDIA_MUSE_MODEL: "meta/muse-glimmer-30b" }), "meta/muse-glimmer-30b");
     assert.equal(museModelFromEnvironment({ MUSE_MODEL: "meta/muse-glimmer-30b" }), "meta/muse-glimmer-30b");
+    assert.equal(museModelFromEnvironment({ NVIDIA_API_KEY: "configured-key" }), DEFAULT_NVIDIA_MUSE_MODEL);
     assert.equal(museModelFromEnvironment({}), null);
     assert.equal(customModelFromEnvironment({}), null);
 });

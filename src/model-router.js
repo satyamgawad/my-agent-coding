@@ -2,6 +2,7 @@ import Nemotron from "./nemotron.js";
 
 export const DEFAULT_LOCAL_MODEL = "qwen2.5-coder:7b";
 export const DEFAULT_GEMMA_MODEL = "gemma4:e2b";
+export const DEFAULT_NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b";
 
 export const MODEL_PROFILES = Object.freeze({
     local: Object.freeze({
@@ -39,7 +40,10 @@ export function customModelFromEnvironment(environment = process.env) {
 }
 
 export function museModelFromEnvironment(environment = process.env) {
-    return environment.NVIDIA_MUSE_MODEL || environment.MUSE_MODEL || null;
+    return environment.NVIDIA_MUSE_MODEL || environment.MUSE_MODEL ||
+        (environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY
+            ? DEFAULT_NVIDIA_MUSE_MODEL
+            : null);
 }
 
 function localProfile(modelId) {

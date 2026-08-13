@@ -228,6 +228,18 @@ function activeTaskStatus(activeTask) {
     };
 }
 
+function unavailableModelModeError(mode) {
+    if (mode === "power" && !museModelFromEnvironment()) {
+        return "Muse Power Build needs NVIDIA_MUSE_MODEL in .env. Add the exact model ID from your NVIDIA API Catalog page, then restart the dashboard.";
+    }
+
+    if (mode === "custom" && !customModelFromEnvironment()) {
+        return "Remote mode needs AGENT_MODEL, AGENT_MODEL_BASE_URL, and AGENT_MODEL_API_KEY in .env.";
+    }
+
+    return "Choose a supported model mode.";
+}
+
 export function createUiServer({
     agentRoot = process.cwd(),
     createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
@@ -535,7 +547,7 @@ export function createUiServer({
                 (modelMode === "custom" && !customModelFromEnvironment()) ||
                 (modelMode === "power" && !museModelFromEnvironment())
             )) {
-                responseJson(response, 400, { error: "Choose a supported model mode for the live evaluation." });
+                responseJson(response, 400, { error: unavailableModelModeError(modelMode) });
                 return;
             }
 
@@ -787,7 +799,7 @@ export function createUiServer({
             if (!MODEL_MODES.has(mode) ||
                 (mode === "custom" && !customModelFromEnvironment()) ||
                 (mode === "power" && !museModelFromEnvironment())) {
-                responseJson(response, 400, { error: "Choose a supported model mode." });
+                responseJson(response, 400, { error: unavailableModelModeError(mode) });
                 return;
             }
 
