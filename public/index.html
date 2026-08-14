@@ -29,6 +29,11 @@
           <button class="workspace-switch is-active" type="button" role="tab" data-workspace-switch="chat" aria-controls="chat-workspace" aria-selected="true">Chat</button>
           <button class="workspace-switch" type="button" role="tab" data-workspace-switch="projects" aria-controls="projects-workspace" aria-selected="false">Projects</button>
         </nav>
+        <label class="safety-toggle" title="Optionally check each request and answer with NVIDIA Safety Guard. NVIDIA is used only while this is enabled.">
+          <input id="safety-guard" type="checkbox">
+          <span class="safety-toggle-track" aria-hidden="true"></span>
+          <span>NVIDIA Safety</span>
+        </label>
         <div class="connection" id="connection" role="status">
           <span class="status-dot" aria-hidden="true"></span>
           <span>Local session</span>
@@ -60,14 +65,15 @@
 
             <form class="chat-composer" id="chat-form">
               <label class="sr-only" for="chat-input">Ask a question</label>
-              <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask for an explanation, compare ideas, or explore a topic…" autofocus disabled></textarea>
+              <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask a question, compare ideas, or search current information…" autofocus disabled></textarea>
               <div class="suggestions" aria-label="Chat suggestions">
                 <button type="button" data-chat-prompt="Explain this concept in simple words: ">Explain a concept</button>
                 <button type="button" data-chat-prompt="Help me compare these options: ">Compare options</button>
                 <button type="button" data-chat-prompt="Help me think through this idea: ">Explore an idea</button>
+                <button type="button" data-chat-prompt="Search the web for current information about: ">Search the web</button>
               </div>
               <div class="task-footer">
-                <p id="chat-hint">Chat answers stay outside your project workspace.</p>
+                <p id="chat-hint">Chat can search public sources but never opens or changes your projects.</p>
                 <div class="task-actions">
                   <button class="cancel-button" id="chat-cancel-button" type="button" hidden>Cancel reply</button>
                   <button class="run-button" id="chat-run-button" type="submit" disabled>
@@ -112,12 +118,24 @@
           </div>
 
           <label class="sr-only" for="project-task-input">Describe a project task</label>
-          <textarea id="project-task-input" name="task" rows="5" maxlength="16000" placeholder="Create a polished portfolio site — or tell the active project what to change next." disabled></textarea>
+          <textarea id="project-task-input" name="task" rows="5" maxlength="16000" placeholder="Describe the app — or simply say “Create an app” and I’ll ask for your requirements." disabled></textarea>
+
+          <section class="requirements-guide" id="requirements-guide" aria-live="polite">
+            <div class="requirements-guide-copy">
+              <span class="requirements-step" aria-hidden="true">01</span>
+              <div>
+                <p class="muted-label">PROJECT BRIEF</p>
+                <strong>Start with the idea, not the files.</strong>
+                <p id="requirements-guide-message">Tell the agent “Create an app” first. It will ask about the purpose, features, and UI/UX before it builds.</p>
+              </div>
+            </div>
+            <button class="requirements-starter" id="requirements-starter" type="button" data-requirements-starter>Plan first</button>
+          </section>
 
           <div class="model-control">
             <div>
               <label class="muted-label" for="model-mode">MODEL ROUTE</label>
-              <p id="model-note">Auto starts fast for routine work and uses deeper lanes only when the task clearly needs them.</p>
+              <p id="model-note">Auto uses Qwen Coder locally. Choose a route when you want a specific model or deeper review.</p>
               <p class="model-health" id="model-health" role="status">Checking model availability…</p>
             </div>
             <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
@@ -125,7 +143,7 @@
               <option value="build">Build · plan + deep review</option>
               <option value="smart">Smart · plan + independent review</option>
               <option value="local">Local · Qwen Coder</option>
-              <option value="gemma">Gemma · local chat + vision</option>
+              <option value="gemma">Gemma · local reasoning</option>
               <option value="power">Power Build · Muse Glimmer 30B</option>
               <option value="custom">Remote · custom endpoint</option>
             </select>
@@ -142,6 +160,7 @@
 
           <div class="task-footer">
             <p id="project-task-hint">After a task completes, send a follow-up instruction for the active project.</p>
+            <span class="task-count" id="project-task-count" aria-live="polite">0 / 16,000</span>
             <div class="task-actions">
               <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel task</button>
               <button class="run-button" id="project-run-button" type="submit" disabled>

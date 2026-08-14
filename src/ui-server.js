@@ -9,6 +9,7 @@ import GitHubPublisher from "./github-publisher.js";
 import ModelHealth from "./model-health.js";
 import ModelRouter, { customModelFromEnvironment, MODEL_MODES, museModelFromEnvironment } from "./model-router.js";
 import Nemotron, { listProviderModels } from "./nemotron.js";
+import NvidiaSafety from "./nvidia-safety.js";
 import ProjectArtifacts from "./project-artifacts.js";
 import ProjectBrief from "./project-brief.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
@@ -247,6 +248,7 @@ export function createUiServer({
     accessPassword = "",
     allowProjectPreviews = true,
     githubPublisher,
+    safety = new NvidiaSafety(),
 } = {}) {
     const workspaceManager = new WorkspaceManager({ agentRoot });
     const evaluationSuite = new EvaluationSuite();
@@ -790,6 +792,7 @@ export function createUiServer({
             const task = typeof body?.task === "string" ? body.task.trim() : "";
             const mode = typeof body?.mode === "string" ? body.mode : "auto";
             const purpose = typeof body?.purpose === "string" ? body.purpose : "project";
+            const safetyEnabled = body?.safety === true;
 
             if (!task) {
                 responseJson(response, 400, { error: "Describe a task before running it." });
@@ -860,16 +863,57 @@ export function createUiServer({
                 : AGENT_CONVERSATION_ID;
 
             try {
-                const result = await agent.run(task, {
-                    signal: taskRecord.controller.signal,
-                    sessionContext: projectSession.recent(conversationId),
-                    purpose,
-                });
-                taskResult = result;
-                taskSucceeded = !isTaskFailure(result);
+                if (safetyEnabled) {
+                    responseEvent(response, "progress", { message: "safety: checking request" });
+                    const requestSafety = await safety.inspect({
+                        prompt: task,
+                        signal: taskRecord.controller.signal,
+                    });
+
+                    if (requestSafety.state === "unsafe") {
+                        taskResult = "❌ NVIDIA Safety Guard blocked this request. Rephrase it with a safe, legitimate goal and try again.";
+                    } else {
+                        responseEvent(response, "progress", {
+                            message: requestSafety.state === "safe"
+                                ? "safety: request approved"
+                                : "safety: unavailable — continuing with local safeguards",
+                        });
+                    }
+                }
+
+                if (!taskResult) {
+                    const result = await agent.run(task, {
+                        signal: taskRecord.controller.signal,
+                        sessionContext: projectSession.recent(conversationId),
+                        purpose,
+                    });
+                    taskResult = result;
+                    taskSucceeded = !isTaskFailure(result);
+                }
+
+                if (safetyEnabled && taskSucceeded) {
+                    responseEvent(response, "progress", { message: "safety: checking answer" });
+                    const responseSafety = await safety.inspect({
+                        prompt: task,
+                        response: taskResult,
+                        signal: taskRecord.controller.signal,
+                    });
+
+                    if (responseSafety.state === "unsafe") {
+                        taskResult = "❌ NVIDIA Safety Guard withheld an unsafe answer. Try a safer or more specific request.";
+                        taskSucceeded = false;
+                    } else {
+                        responseEvent(response, "progress", {
+                            message: responseSafety.state === "safe"
+                                ? "safety: answer approved"
+                                : "safety: unavailable — answer kept with local safeguards",
+                        });
+                    }
+                }
+
                 responseEvent(response, "result", {
                     ok: taskSucceeded,
-                    result,
+                    result: taskResult,
                     model: model.activeProfile?.label || null,
                     cancelled: taskRecord.controller.signal.aborted,
                 });

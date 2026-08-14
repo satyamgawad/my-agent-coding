@@ -2,16 +2,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import Agent, { MAX_STEPS, cleanResponseText, normalizeToolError, normalizeToolResult, resolveMaxSteps } from "../src/agent.js";
+import Agent, { MAX_STEPS, cleanResponseText, normalizeToolError, normalizeToolResult, projectRequirementsPrompt, resolveMaxSteps } from "../src/agent.js";
 import { validateToolArguments } from "../src/tools/validation.js";
 import { createTestWorkspace, scriptedModel, toolCall } from "./helpers.js";
 
 function createAgent(testContext, responses, prompts = []) {
-    const { workspaceManager, tools } = createTestWorkspace(testContext);
+    const { root, workspaceManager, tools } = createTestWorkspace(testContext);
     return {
         agent: new Agent(scriptedModel(responses, prompts), { workspaceManager, tools }),
         prompts,
         tools,
+        root,
     };
 }
 
@@ -42,6 +43,80 @@ test("agent step budgets accept only safe configured limits", () => {
 
 test("agent response cleanup replaces raw HTML line breaks with clean text lines", () => {
     assert.equal(cleanResponseText("First<br>Second<br/>Third &lt;br&gt;Fourth"), "First\nSecond\nThird\nFourth");
+});
+
+test("a generic project request gathers requirements before the agent creates files", async (t) => {
+    const { agent, prompts } = createAgent(t, []);
+
+    const result = await agent.run("Create an app");
+
+    assert.equal(result, projectRequirementsPrompt());
+    assert.equal(prompts.length, 0);
+    assert.match(result, /Purpose and target users/);
+    assert.match(result, /UI\/UX style/);
+    assert.match(result, /Once you reply, I will create the project/);
+});
+
+test("general Chat can research public web sources without accessing a project", async (t) => {
+    const prompts = [];
+    const { workspaceManager, tools } = createTestWorkspace(t);
+    const searches = [];
+    const pages = [];
+    tools.webSearch.execute = async ({ query }) => {
+        searches.push(query);
+        return {
+            query,
+            results: [{ title: "Example documentation", url: "https://example.com/docs" }],
+        };
+    };
+    tools.readWebPage.execute = async ({ url }) => {
+        pages.push(url);
+        return { url, title: "Example documentation", text: "Verified public reference." };
+    };
+    const agent = new Agent(
+        scriptedModel([
+            { content: JSON.stringify({ name: "webSearch", arguments: { query: "current example documentation" } }) },
+            { content: "Here is the current answer.\n- Sources: https://example.com/docs" },
+        ], prompts),
+        { workspaceManager, tools }
+    );
+
+    const result = await agent.run("Search for current example documentation.", { purpose: "chat" });
+
+    assert.equal(result, "Here is the current answer.\n- Sources: https://example.com/docs");
+    assert.deepEqual(searches, ["current example documentation"]);
+    assert.deepEqual(pages, ["https://example.com/docs"]);
+    assert.match(prompts[0], /may use only webSearch and readWebPage/);
+    assert.match(prompts[1], /Latest research result/);
+    assert.match(prompts[1], /Verified public reference/);
+    assert.doesNotMatch(prompts[0], /projects\/example/i);
+});
+
+test("general Chat refuses project tools even when a model requests one", async (t) => {
+    const { agent } = createAgent(t, [toolCall("listFiles", { directory: "." })]);
+
+    assert.match(
+        await agent.run("Inspect my project files.", { purpose: "chat" }),
+        /cannot access or change projects/
+    );
+});
+
+test("general Chat normalizes a structured answer and source list from the local model", async (t) => {
+    const { agent } = createAgent(t, [{
+        content: [
+            "```json",
+            JSON.stringify({
+                response: "The current answer is verified.<br>It is ready to use.",
+                sources: ["https://example.com/source"],
+            }),
+            "```",
+        ].join("\n"),
+    }]);
+
+    assert.equal(
+        await agent.run("Format this answer cleanly.", { purpose: "chat" }),
+        "The current answer is verified.\nIt is ready to use.\n\nSources:\n- https://example.com/source"
+    );
 });
 
 test("tool argument validation rejects malformed, missing, and unknown fields", () => {
@@ -189,6 +264,25 @@ test("an explicit self-improvement task can verify and test an allowed agent-sou
         fs.readFileSync(path.join(root, "public", "status.js"), "utf8"),
         "export const status = 'new';\n"
     );
+});
+
+test("agent limits repeated failed source reads and explains that a file path is required", async (t) => {
+    const prompts = [];
+    const { agent, root } = createAgent(
+        t,
+        [
+            ...Array.from({ length: 7 }, () => toolCall("readAgentSource", { filePath: "public" })),
+            { content: "I could not inspect the requested source." },
+        ],
+        prompts
+    );
+    fs.mkdirSync(path.join(root, "public"));
+
+    const result = await agent.run("Improve the agent's own source.");
+
+    assert.match(result, /last tool action \(readAgentSource\) failed/);
+    assert.match(prompts[1], /only reads one safe source file, not a directory/);
+    assert.match(prompts[7], /REPEATED_INSPECTION/);
 });
 
 test("agent suppresses verbose model reasoning after a failed tool instead of presenting it as completion", async (t) => {

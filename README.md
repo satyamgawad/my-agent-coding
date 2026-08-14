@@ -90,6 +90,21 @@ keep Qwen as your private no-cost baseline. If `NVIDIA_MUSE_MODEL` is omitted,
 the same current NVIDIA catalog ID is selected automatically whenever
 `NVIDIA_API_KEY` is present.
 
+### NVIDIA Safety Guard
+
+The **NVIDIA Safety** toggle in the dashboard optionally checks each request
+and final answer with `nvidia/nemotron-3.5-content-safety`. It is off by
+default, so normal Chat and Project work remains local and fast. When enabled,
+an unavailable or rate-limited NVIDIA request never stops the agent; it
+continues with the existing local safeguards instead.
+
+You can override the default catalog model or endpoint in `.env`:
+
+```dotenv
+NVIDIA_SAFETY_MODEL=nvidia/nemotron-3.5-content-safety
+NVIDIA_SAFETY_BASE_URL=https://integrate.api.nvidia.com/v1
+```
+
 For unusually large multi-file tasks, you can raise the agent's step budget
 from its default of 30 to a value between 10 and 100:
 

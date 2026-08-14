@@ -3,6 +3,10 @@ const projectTaskInput = document.querySelector("#project-task-input");
 const projectRunButton = document.querySelector("#project-run-button");
 const projectCancelButton = document.querySelector("#cancel-button");
 const projectTaskHint = document.querySelector("#project-task-hint");
+const projectTaskCount = document.querySelector("#project-task-count");
+const requirementsGuide = document.querySelector("#requirements-guide");
+const requirementsGuideMessage = document.querySelector("#requirements-guide-message");
+const requirementsStarter = document.querySelector("#requirements-starter");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
 const chatRunButton = document.querySelector("#chat-run-button");
@@ -11,6 +15,7 @@ const chatHint = document.querySelector("#chat-hint");
 const chatTurns = document.querySelector("#chat-turns");
 const chatEmpty = document.querySelector("#chat-empty");
 const clearChatButton = document.querySelector("#clear-chat");
+const safetyGuard = document.querySelector("#safety-guard");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
 const modelHealth = document.querySelector("#model-health");
@@ -84,7 +89,7 @@ const modelNotes = {
   build: "Build uses the local coding model, creates a project brief, and independently reviews the delivered result.",
   smart: "Uses the local coding model, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
   local: "Use Qwen Coder locally through Ollama. Your project content stays on this computer.",
-  gemma: "Use Gemma 4 E2B locally through Ollama for general chat and reasoning. It is multimodal-capable, while this dashboard currently sends text tasks. Qwen Coder remains the fallback.",
+  gemma: "Use Gemma 4 E2B locally through Ollama for general reasoning. This dashboard currently sends text tasks, and Qwen Coder remains the fallback.",
   power: "Use NVIDIA-hosted Muse Glimmer 30B for demanding project work. It needs NVIDIA_MUSE_MODEL and NVIDIA_API_KEY; Qwen Coder is the fallback.",
   custom: "Uses the optional remote model configured in your private environment, then falls back to your local model if it is unavailable.",
 };
@@ -165,6 +170,7 @@ const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
 const MODEL_MODE_STORAGE_KEY = "my-coding-agent:model-mode";
 const WORKSPACE_VIEW_STORAGE_KEY = "my-coding-agent:workspace-view";
+const SAFETY_GUARD_STORAGE_KEY = "my-coding-agent:nvidia-safety-enabled";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
 const MAX_FILE_CHANGE_ITEMS = 5;
 
@@ -306,6 +312,22 @@ function saveModelModePreference(mode) {
   }
 }
 
+function restoreSafetyGuardPreference() {
+  try {
+    safetyGuard.checked = window.localStorage.getItem(SAFETY_GUARD_STORAGE_KEY) === "true";
+  } catch {
+    safetyGuard.checked = false;
+  }
+}
+
+function saveSafetyGuardPreference() {
+  try {
+    window.localStorage.setItem(SAFETY_GUARD_STORAGE_KEY, String(safetyGuard.checked));
+  } catch {
+    // The checkbox still applies to the current task when browser storage is unavailable.
+  }
+}
+
 function setWorkspaceView(view, { persist = true } = {}) {
   const target = view === "projects" ? "projects" : "chat";
 
@@ -346,6 +368,7 @@ function setRunning(isRunning) {
   projectTaskInput.disabled = taskControlsDisabled;
   chatRunButton.disabled = taskControlsDisabled;
   chatInput.disabled = taskControlsDisabled;
+  safetyGuard.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
@@ -356,6 +379,9 @@ function setRunning(isRunning) {
     control.disabled = taskControlsDisabled;
   }
   for (const control of document.querySelectorAll("[data-build-prompt]")) {
+    control.disabled = taskControlsDisabled;
+  }
+  for (const control of document.querySelectorAll("[data-requirements-starter]")) {
     control.disabled = taskControlsDisabled;
   }
   deleteProjectButton.disabled = taskControlsDisabled || !workspaceContext.project;
@@ -369,9 +395,9 @@ function setRunning(isRunning) {
         : "Describe a new project or select one to continue it."
       : "Checking whether an earlier task is still running…";
   chatHint.textContent = isRunning
-    ? "Thinking through your question. Your projects remain untouched."
+    ? "Thinking through your question or checking public sources. Your projects remain untouched."
     : taskStatusKnown
-      ? "Chat answers stay outside your project workspace."
+      ? "Chat can search public sources but never opens or changes your projects."
       : "Checking whether an earlier request is still running…";
   activityState.textContent = isRunning ? "Working" : "Ready";
   activityState.classList.toggle("is-working", isRunning);
@@ -577,13 +603,34 @@ function showToast(message, kind = "info") {
   window.setTimeout(removeToast, 5_000);
 }
 
+function isRequirementsPrompt(text) {
+  return typeof text === "string" && text.startsWith("Before I create the project, I need a few requirements");
+}
+
+function setRequirementsGuide(awaitingRequirements) {
+  requirementsGuide.classList.toggle("is-awaiting", awaitingRequirements);
+  requirementsGuideMessage.textContent = awaitingRequirements
+    ? "Brief requested. Reply below with the purpose, key features, and visual direction so the agent can build the right project."
+    : "Tell the agent “Create an app” first. It will ask about the purpose, features, and UI/UX before it builds.";
+  requirementsStarter.textContent = awaitingRequirements ? "Write requirements" : "Plan first";
+}
+
+function updateProjectTaskCount() {
+  projectTaskCount.textContent = `${projectTaskInput.value.length.toLocaleString()} / 16,000`;
+}
+
 function showResult(text, ok) {
+  const awaitingRequirements = ok && isRequirementsPrompt(text);
   resultCard.classList.toggle("is-success", ok);
   resultCard.classList.toggle("is-error", !ok);
-  resultTitle.textContent = ok ? "Task complete" : "Task needs attention";
-  resultMark.textContent = ok ? "✦" : "!";
+  resultCard.classList.toggle("is-requirements", awaitingRequirements);
+  resultTitle.textContent = awaitingRequirements ? "Project brief needed" : ok ? "Task complete" : "Task needs attention";
+  resultMark.textContent = awaitingRequirements ? "01" : ok ? "✦" : "!";
   renderAnswerText(resultText, text);
-  showToast(ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
+  if (activeTaskPurpose !== "chat") setRequirementsGuide(awaitingRequirements);
+  if (!awaitingRequirements) {
+    showToast(ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
+  }
 }
 
 function showRequestError(message, title = "Could not start the task") {
@@ -1609,10 +1656,13 @@ async function readEventStream(response) {
           addActivity("Task cancelled", "Completed changes were kept in the active project.", "failed");
           continue;
         }
-        const detail = parsed.ok
-          ? `${parsed.model ? `Finished with ${parsed.model}. ` : ""}Review the outcome for details.`
-          : parsed.result;
-        addActivity(parsed.ok ? "Agent finished the task" : "Agent stopped with an issue", detail, parsed.ok ? "" : "failed");
+        const awaitingRequirements = parsed.ok && isRequirementsPrompt(parsed.result);
+        const detail = awaitingRequirements
+          ? "Reply with the project requirements, then the agent will begin building."
+          : parsed.ok
+            ? `${parsed.model ? `Finished with ${parsed.model}. ` : ""}Review the outcome for details.`
+            : parsed.result;
+        addActivity(awaitingRequirements ? "Project brief requested" : parsed.ok ? "Agent finished the task" : "Agent stopped with an issue", detail, parsed.ok ? "" : "failed");
       }
     }
   }
@@ -1633,13 +1683,14 @@ async function runTask(task, purpose = "project") {
   resultText.textContent = purpose === "chat"
     ? "Preparing a project-safe answer."
     : "Following the task, checking changes, and waiting to verify the result.";
-  resultCard.classList.remove("is-success", "is-error");
+  resultCard.classList.remove("is-success", "is-error", "is-requirements");
+  if (purpose === "project") setRequirementsGuide(false);
 
   try {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: purpose === "chat" ? "auto" : modelMode.value, purpose }),
+      body: JSON.stringify({ task, mode: purpose === "chat" ? "auto" : modelMode.value, purpose, safety: safetyGuard.checked }),
     });
 
     if (!response.ok) {
@@ -1666,6 +1717,7 @@ async function runTask(task, purpose = "project") {
     await refreshChatConversation();
     const input = purpose === "chat" ? chatInput : projectTaskInput;
     input.value = "";
+    if (purpose === "project") updateProjectTaskCount();
     input.focus();
   } catch (error) {
     if (taskStarted) {
@@ -1747,6 +1799,8 @@ projectTaskInput.addEventListener("keydown", (event) => {
   }
 });
 
+projectTaskInput.addEventListener("input", updateProjectTaskCount);
+
 chatInput.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
     event.preventDefault();
@@ -1758,6 +1812,8 @@ modelMode.addEventListener("change", () => {
   modelNote.textContent = modelNotes[modelMode.value];
   saveModelModePreference(modelMode.value);
 });
+
+safetyGuard.addEventListener("change", saveSafetyGuardPreference);
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
 deleteProjectButton.addEventListener("click", deleteActiveProject);
@@ -1799,6 +1855,7 @@ for (const toggle of document.querySelectorAll("[data-panel-toggle]")) {
 for (const suggestion of document.querySelectorAll("[data-prompt]")) {
   suggestion.addEventListener("click", () => {
     projectTaskInput.value = suggestion.dataset.prompt;
+    updateProjectTaskCount();
     projectTaskInput.focus();
   });
 }
@@ -1813,12 +1870,25 @@ for (const suggestion of document.querySelectorAll("[data-chat-prompt]")) {
 for (const suggestion of document.querySelectorAll("[data-build-prompt]")) {
   suggestion.addEventListener("click", () => {
     projectTaskInput.value = suggestion.dataset.buildPrompt;
+    updateProjectTaskCount();
     modelMode.value = "build";
     modelNote.textContent = modelNotes.build;
     saveModelModePreference("build");
     projectTaskInput.focus();
   });
 }
+
+requirementsStarter.addEventListener("click", () => {
+  if (requirementsGuide.classList.contains("is-awaiting")) {
+    projectTaskInput.focus();
+    projectTaskHint.textContent = "Reply in short bullets with the purpose, features, and UI/UX direction.";
+    return;
+  }
+  projectTaskInput.value = "Create an app";
+  updateProjectTaskCount();
+  projectTaskInput.focus();
+  projectTaskHint.textContent = "Run this to start a short requirements conversation before any project files are created.";
+});
 
 function updateCosmicParallax() {
   if (!cosmicBackdrop) return;
@@ -1838,7 +1908,9 @@ window.addEventListener("scroll", () => {
 updateCosmicParallax();
 
 restoreModelModePreference();
+restoreSafetyGuardPreference();
 restoreWorkspaceView();
+updateProjectTaskCount();
 setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();

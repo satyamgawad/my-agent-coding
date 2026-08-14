@@ -191,7 +191,8 @@ test("general chat stays separate from project context and project conversations
     assert.equal(chat.status, 200);
     assert.match(await chat.text(), /A clear general answer/);
     assert.match(prompts[0], /general Chat mode/);
-    assert.match(prompts[0], /cannot inspect files, open projects, create projects, run commands, use tools, or change anything/i);
+    assert.match(prompts[0], /cannot inspect files, open projects, create projects, run commands, or change anything/i);
+    assert.match(prompts[0], /may use only webSearch and readWebPage/i);
 
     const generalChat = await fetch(`${baseUrl}/api/chat/conversation`);
     assert.deepEqual((await generalChat.json()).turns.map(({ task, outcome }) => ({ task, outcome })), [{
@@ -204,6 +205,47 @@ test("general chat stays separate from project context and project conversations
 
     const history = await fetch(`${baseUrl}/api/tasks/history`);
     assert.equal((await history.json()).records[0].project, null);
+});
+
+test("the optional NVIDIA Safety Guard checks requests and answers without blocking a local fallback", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const checks = [];
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate() {
+                return { content: "A safe answer." };
+            },
+        }),
+        safety: {
+            async inspect(input) {
+                checks.push(input);
+                return { state: "safe", allowed: true };
+            },
+        },
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Explain safety checks.", purpose: "chat", safety: true }),
+    });
+    const stream = await task.text();
+
+    assert.match(stream, /safety: checking request/);
+    assert.match(stream, /safety: request approved/);
+    assert.match(stream, /safety: checking answer/);
+    assert.match(stream, /safety: answer approved/);
+    assert.match(stream, /A safe answer/);
+    assert.equal(checks.length, 2);
+    assert.equal(checks[0].prompt, "Explain safety checks.");
+    assert.equal(checks[1].response, "A safe answer.");
 });
 
 test("the dashboard runs Smart mode and exposes its saved project handoff", async (t) => {
@@ -856,7 +898,7 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
 
     assert.match(page, /value="build">Build · plan \+ deep review/);
     assert.match(page, /value="local">Local · Qwen Coder/);
-    assert.match(page, /value="gemma">Gemma · local chat \+ vision/);
+    assert.match(page, /value="gemma">Gemma · local reasoning/);
     assert.match(page, /value="power">Power Build · Muse Glimmer 30B/);
     assert.match(page, /data-build-prompt/);
     assert.match(script, /modelNotes\.build/);
@@ -864,6 +906,30 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     assert.match(script, /gemma: "Use Gemma 4 E2B locally/);
     assert.match(script, /power: "Use NVIDIA-hosted Muse Glimmer 30B/);
     assert.match(script, /purpose === "chat" \? "auto" : modelMode\.value/);
+});
+
+test("the dashboard guides a generic project request into a requirements brief", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /id="requirements-guide"/);
+    assert.match(page, /id="requirements-starter"/);
+    assert.match(page, /id="project-task-count"/);
+    assert.match(script, /function isRequirementsPrompt/);
+    assert.match(script, /function setRequirementsGuide/);
+    assert.match(script, /function updateProjectTaskCount/);
+    assert.match(script, /Project brief requested/);
+});
+
+test("the dashboard exposes an opt-in NVIDIA Safety Guard toggle", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /id="safety-guard"/);
+    assert.match(page, /NVIDIA Safety/);
+    assert.match(script, /SAFETY_GUARD_STORAGE_KEY/);
+    assert.match(script, /safety: safetyGuard\.checked/);
+    assert.match(script, /restoreSafetyGuardPreference/);
 });
 
 test("the dashboard formats agent answers without rendering raw HTML break tags", () => {
