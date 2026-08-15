@@ -16,6 +16,7 @@ const chatTurns = document.querySelector("#chat-turns");
 const chatEmpty = document.querySelector("#chat-empty");
 const clearChatButton = document.querySelector("#clear-chat");
 const safetyGuard = document.querySelector("#safety-guard");
+const chatModelMode = document.querySelector("#chat-model-mode");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
 const modelHealth = document.querySelector("#model-health");
@@ -91,6 +92,7 @@ const modelNotes = {
   local: "Use Qwen Coder locally through Ollama. Your project content stays on this computer.",
   gemma: "Use Gemma 4 E2B locally through Ollama for general reasoning. This dashboard currently sends text tasks, and Qwen Coder remains the fallback.",
   power: "Use NVIDIA-hosted Muse Glimmer 30B for demanding project work. It needs NVIDIA_MUSE_MODEL and NVIDIA_API_KEY; Qwen Coder is the fallback.",
+  ultra: "Use NVIDIA Nemotron 3 Ultra for demanding reasoning, planning, and coding. It needs NVIDIA_API_KEY; Qwen Coder remains the fallback.",
   custom: "Uses the optional remote model configured in your private environment, then falls back to your local model if it is unavailable.",
 };
 
@@ -169,6 +171,7 @@ const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/pre
 const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
 const MODEL_MODE_STORAGE_KEY = "my-coding-agent:model-mode";
+const CHAT_MODEL_MODE_STORAGE_KEY = "my-coding-agent:chat-model-mode";
 const WORKSPACE_VIEW_STORAGE_KEY = "my-coding-agent:workspace-view";
 const SAFETY_GUARD_STORAGE_KEY = "my-coding-agent:nvidia-safety-enabled";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
@@ -312,6 +315,25 @@ function saveModelModePreference(mode) {
   }
 }
 
+function restoreChatModelModePreference() {
+  try {
+    const savedMode = window.localStorage.getItem(CHAT_MODEL_MODE_STORAGE_KEY);
+    if (["auto", "ultra"].includes(savedMode)) {
+      chatModelMode.value = savedMode;
+    }
+  } catch {
+    // Chat still uses the local Auto default when browser storage is unavailable.
+  }
+}
+
+function saveChatModelModePreference() {
+  try {
+    window.localStorage.setItem(CHAT_MODEL_MODE_STORAGE_KEY, chatModelMode.value);
+  } catch {
+    // The selected Chat route still applies to this request when storage is unavailable.
+  }
+}
+
 function restoreSafetyGuardPreference() {
   try {
     safetyGuard.checked = window.localStorage.getItem(SAFETY_GUARD_STORAGE_KEY) === "true";
@@ -369,6 +391,7 @@ function setRunning(isRunning) {
   chatRunButton.disabled = taskControlsDisabled;
   chatInput.disabled = taskControlsDisabled;
   safetyGuard.disabled = taskControlsDisabled;
+  chatModelMode.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
@@ -1690,7 +1713,7 @@ async function runTask(task, purpose = "project") {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: purpose === "chat" ? "auto" : modelMode.value, purpose, safety: safetyGuard.checked }),
+      body: JSON.stringify({ task, mode: purpose === "chat" ? chatModelMode.value : modelMode.value, purpose, safety: safetyGuard.checked }),
     });
 
     if (!response.ok) {
@@ -1813,6 +1836,8 @@ modelMode.addEventListener("change", () => {
   saveModelModePreference(modelMode.value);
 });
 
+chatModelMode.addEventListener("change", saveChatModelModePreference);
+
 safetyGuard.addEventListener("change", saveSafetyGuardPreference);
 
 runProjectButton.addEventListener("click", toggleProjectRunner);
@@ -1908,6 +1933,7 @@ window.addEventListener("scroll", () => {
 updateCosmicParallax();
 
 restoreModelModePreference();
+restoreChatModelModePreference();
 restoreSafetyGuardPreference();
 restoreWorkspaceView();
 updateProjectTaskCount();

@@ -93,6 +93,11 @@ export function modelEndpointConfig(environment = process.env, { endpoint = "aut
             apiKey: environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY,
             missingKeyMessage: "NVIDIA_API_KEY is required for the Muse Glimmer Power Build route.",
         },
+        nvidiaUltra: {
+            baseURL: environment.NVIDIA_NEMOTRON_ULTRA_BASE_URL || environment.NVIDIA_ULTRA_BASE_URL || environment.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL,
+            apiKey: environment.NVIDIA_NEMOTRON_ULTRA_API_KEY || environment.NVIDIA_ULTRA_API_KEY || environment.NVIDIA_API_KEY,
+            missingKeyMessage: "NVIDIA_API_KEY is required for the Nemotron 3 Ultra route.",
+        },
     };
     const selectedConfig = configByEndpoint[selectedEndpoint];
 

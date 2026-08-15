@@ -814,6 +814,40 @@ test("the dashboard explains how to configure the Muse Power Build route", async
     });
 });
 
+test("the dashboard explains how to configure the Nemotron 3 Ultra route", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const savedNvidiaApiKey = process.env.NVIDIA_API_KEY;
+    const savedUltraApiKey = process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+    const savedUltraModel = process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
+    delete process.env.NVIDIA_API_KEY;
+    delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+    delete process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
+    const server = createUiServer({ agentRoot: root });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        if (savedNvidiaApiKey === undefined) delete process.env.NVIDIA_API_KEY;
+        else process.env.NVIDIA_API_KEY = savedNvidiaApiKey;
+        if (savedUltraApiKey === undefined) delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+        else process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY = savedUltraApiKey;
+        if (savedUltraModel === undefined) delete process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
+        else process.env.NVIDIA_NEMOTRON_ULTRA_MODEL = savedUltraModel;
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Explain a system design.", mode: "ultra", purpose: "chat" }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+        error: "Nemotron 3 Ultra needs NVIDIA_API_KEY in .env. Add your NVIDIA API Catalog key, then restart the dashboard.",
+    });
+});
+
 test("a missing project file is returned as a normal task result instead of dropping the stream", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     fs.mkdirSync(path.join(root, "projects", "notepad-app"), { recursive: true });
@@ -900,12 +934,16 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     assert.match(page, /value="local">Local · Qwen Coder/);
     assert.match(page, /value="gemma">Gemma · local reasoning/);
     assert.match(page, /value="power">Power Build · Muse Glimmer 30B/);
+    assert.match(page, /id="chat-model-mode"/);
+    assert.match(page, /value="ultra">Nemotron 3 Ultra · NVIDIA/);
     assert.match(page, /data-build-prompt/);
     assert.match(script, /modelNotes\.build/);
     assert.match(script, /local: "Use Qwen Coder locally/);
     assert.match(script, /gemma: "Use Gemma 4 E2B locally/);
     assert.match(script, /power: "Use NVIDIA-hosted Muse Glimmer 30B/);
-    assert.match(script, /purpose === "chat" \? "auto" : modelMode\.value/);
+    assert.match(script, /ultra: "Use NVIDIA Nemotron 3 Ultra/);
+    assert.match(script, /purpose === "chat" \? chatModelMode\.value : modelMode\.value/);
+    assert.match(script, /CHAT_MODEL_MODE_STORAGE_KEY/);
 });
 
 test("the dashboard guides a generic project request into a requirements brief", () => {

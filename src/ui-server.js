@@ -7,7 +7,7 @@ import Agent from "./agent.js";
 import EvaluationSuite from "./evaluation-suite.js";
 import GitHubPublisher from "./github-publisher.js";
 import ModelHealth from "./model-health.js";
-import ModelRouter, { customModelFromEnvironment, MODEL_MODES, museModelFromEnvironment } from "./model-router.js";
+import ModelRouter, { customModelFromEnvironment, MODEL_MODES, museModelFromEnvironment, nemotronUltraModelFromEnvironment } from "./model-router.js";
 import Nemotron, { listProviderModels } from "./nemotron.js";
 import NvidiaSafety from "./nvidia-safety.js";
 import ProjectArtifacts from "./project-artifacts.js";
@@ -232,6 +232,10 @@ function activeTaskStatus(activeTask) {
 function unavailableModelModeError(mode) {
     if (mode === "power" && !museModelFromEnvironment()) {
         return "Muse Power Build needs NVIDIA_MUSE_MODEL in .env. Add the exact model ID from your NVIDIA API Catalog page, then restart the dashboard.";
+    }
+
+    if (mode === "ultra" && !nemotronUltraModelFromEnvironment()) {
+        return "Nemotron 3 Ultra needs NVIDIA_API_KEY in .env. Add your NVIDIA API Catalog key, then restart the dashboard.";
     }
 
     if (mode === "custom" && !customModelFromEnvironment()) {
@@ -547,7 +551,8 @@ export function createUiServer({
             if (evaluationMode === "live" && (
                 !MODEL_MODES.has(modelMode) ||
                 (modelMode === "custom" && !customModelFromEnvironment()) ||
-                (modelMode === "power" && !museModelFromEnvironment())
+                (modelMode === "power" && !museModelFromEnvironment()) ||
+                (modelMode === "ultra" && !nemotronUltraModelFromEnvironment())
             )) {
                 responseJson(response, 400, { error: unavailableModelModeError(modelMode) });
                 return;
@@ -801,7 +806,8 @@ export function createUiServer({
 
             if (!MODEL_MODES.has(mode) ||
                 (mode === "custom" && !customModelFromEnvironment()) ||
-                (mode === "power" && !museModelFromEnvironment())) {
+                (mode === "power" && !museModelFromEnvironment()) ||
+                (mode === "ultra" && !nemotronUltraModelFromEnvironment())) {
                 responseJson(response, 400, { error: unavailableModelModeError(mode) });
                 return;
             }

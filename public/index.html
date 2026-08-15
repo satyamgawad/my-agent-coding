@@ -66,6 +66,16 @@
             <form class="chat-composer" id="chat-form">
               <label class="sr-only" for="chat-input">Ask a question</label>
               <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask a question, compare ideas, or search current information…" autofocus disabled></textarea>
+              <div class="model-control chat-model-control">
+                <div>
+                  <label class="muted-label" for="chat-model-mode">CHAT MODEL</label>
+                  <p>Use the private local default, or NVIDIA Nemotron 3 Ultra with automatic Qwen fallback.</p>
+                </div>
+                <select id="chat-model-mode" name="chat-mode" disabled>
+                  <option value="auto" selected>Auto · Qwen Coder</option>
+                  <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
+                </select>
+              </div>
               <div class="suggestions" aria-label="Chat suggestions">
                 <button type="button" data-chat-prompt="Explain this concept in simple words: ">Explain a concept</button>
                 <button type="button" data-chat-prompt="Help me compare these options: ">Compare options</button>
@@ -145,6 +155,7 @@
               <option value="local">Local · Qwen Coder</option>
               <option value="gemma">Gemma · local reasoning</option>
               <option value="power">Power Build · Muse Glimmer 30B</option>
+              <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
               <option value="custom">Remote · custom endpoint</option>
             </select>
           </div>

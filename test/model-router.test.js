@@ -5,8 +5,10 @@ import ModelRouter, {
     DEFAULT_LOCAL_MODEL,
     DEFAULT_GEMMA_MODEL,
     DEFAULT_NVIDIA_MUSE_MODEL,
+    DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL,
     MODEL_PROFILES,
     museModelFromEnvironment,
+    nemotronUltraModelFromEnvironment,
 } from "../src/model-router.js";
 
 function responseFor(profile) {
@@ -87,6 +89,31 @@ test("Power Build routes Muse through NVIDIA and falls back to local Qwen", asyn
     assert.equal(response.content, "Response from Qwen 2.5 Coder 7B.");
     assert.deepEqual(used, [
         { id: "meta/muse-glimmer-30b", endpoint: "nvidiaMuse" },
+        { id: DEFAULT_LOCAL_MODEL, endpoint: "ollama" },
+    ]);
+});
+
+test("Nemotron 3 Ultra routes through NVIDIA and falls back to local Qwen", async () => {
+    const used = [];
+    const router = new ModelRouter({
+        mode: "ultra",
+        ultraModel: DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL,
+        createModel: (profile) => ({
+            async generate() {
+                used.push({ id: profile.id, endpoint: profile.endpoint });
+                if (profile.endpoint === "nvidiaUltra") {
+                    throw Object.assign(new Error("429 status code"), { status: 429 });
+                }
+                return responseFor(profile);
+            },
+        }),
+    });
+
+    const response = await router.generate("Plan a project with careful steps.");
+
+    assert.equal(response.content, "Response from Qwen 2.5 Coder 7B.");
+    assert.deepEqual(used, [
+        { id: DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL, endpoint: "nvidiaUltra" },
         { id: DEFAULT_LOCAL_MODEL, endpoint: "ollama" },
     ]);
 });
@@ -180,6 +207,13 @@ test("Power Build requires an explicitly configured Muse model ID", () => {
     );
 });
 
+test("Nemotron 3 Ultra requires a configured NVIDIA key", () => {
+    assert.throws(
+        () => new ModelRouter({ mode: "ultra", ultraModel: null }),
+        /NVIDIA_API_KEY is required/
+    );
+});
+
 test("only the provider-neutral environment variable enables a custom model", () => {
     assert.equal(
         customModelFromEnvironment({ AGENT_MODEL: "provider/current", NVIDIA_MODEL: "legacy/model" }),
@@ -190,5 +224,17 @@ test("only the provider-neutral environment variable enables a custom model", ()
     assert.equal(museModelFromEnvironment({ MUSE_MODEL: "meta/muse-glimmer-30b" }), "meta/muse-glimmer-30b");
     assert.equal(museModelFromEnvironment({ NVIDIA_API_KEY: "configured-key" }), DEFAULT_NVIDIA_MUSE_MODEL);
     assert.equal(museModelFromEnvironment({}), null);
+    assert.equal(
+        nemotronUltraModelFromEnvironment({ NVIDIA_API_KEY: "configured-key" }),
+        DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL
+    );
+    assert.equal(
+        nemotronUltraModelFromEnvironment({
+            NVIDIA_NEMOTRON_ULTRA_API_KEY: "configured-key",
+            NVIDIA_NEMOTRON_ULTRA_MODEL: "nvidia/custom-ultra",
+        }),
+        "nvidia/custom-ultra"
+    );
+    assert.equal(nemotronUltraModelFromEnvironment({}), null);
     assert.equal(customModelFromEnvironment({}), null);
 });

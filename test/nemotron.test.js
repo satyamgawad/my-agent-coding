@@ -186,6 +186,26 @@ test("Muse uses the dedicated NVIDIA endpoint without affecting the Ollama fallb
     );
 });
 
+test("Nemotron 3 Ultra uses the dedicated NVIDIA endpoint without affecting the Ollama fallback", () => {
+    assert.deepEqual(modelEndpointConfig({
+        NVIDIA_API_KEY: "nvidia-key",
+    }, { endpoint: "nvidiaUltra" }), {
+        apiKey: "nvidia-key",
+        baseURL: "https://integrate.api.nvidia.com/v1",
+    });
+    assert.deepEqual(modelEndpointConfig({
+        NVIDIA_NEMOTRON_ULTRA_API_KEY: "ultra-key",
+        NVIDIA_NEMOTRON_ULTRA_BASE_URL: "https://ultra.example.test/v1",
+    }, { endpoint: "nvidiaUltra" }), {
+        apiKey: "ultra-key",
+        baseURL: "https://ultra.example.test/v1",
+    });
+    assert.throws(
+        () => modelEndpointConfig({}, { endpoint: "nvidiaUltra" }),
+        /NVIDIA_API_KEY/
+    );
+});
+
 test("a non-local Ollama-compatible endpoint must provide its own key", () => {
     assert.throws(
         () => modelEndpointConfig({ OLLAMA_BASE_URL: "https://ollama.example.test/v1" }, { endpoint: "ollama" }),

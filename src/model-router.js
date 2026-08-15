@@ -3,6 +3,7 @@ import Nemotron from "./nemotron.js";
 export const DEFAULT_LOCAL_MODEL = "qwen2.5-coder:7b";
 export const DEFAULT_GEMMA_MODEL = "gemma4:e2b";
 export const DEFAULT_NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b";
+export const DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
 
 export const MODEL_PROFILES = Object.freeze({
     local: Object.freeze({
@@ -27,11 +28,10 @@ const LEGACY_MODEL_MODE_ALIASES = Object.freeze({
     llama: "local",
     kimi: "local",
     oss120: "local",
-    ultra: "local",
     glm: "local",
 });
 
-export const MODEL_MODES = new Set(["auto", "build", "smart", "local", "gemma", "power", "custom"]);
+export const MODEL_MODES = new Set(["auto", "build", "smart", "local", "gemma", "power", "ultra", "custom"]);
 
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
 
@@ -44,6 +44,13 @@ export function museModelFromEnvironment(environment = process.env) {
         (environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY
             ? DEFAULT_NVIDIA_MUSE_MODEL
             : null);
+}
+
+export function nemotronUltraModelFromEnvironment(environment = process.env) {
+    const apiKey = environment.NVIDIA_NEMOTRON_ULTRA_API_KEY || environment.NVIDIA_ULTRA_API_KEY || environment.NVIDIA_API_KEY;
+    if (!apiKey) return null;
+
+    return environment.NVIDIA_NEMOTRON_ULTRA_MODEL || environment.NVIDIA_ULTRA_MODEL || DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL;
 }
 
 function localProfile(modelId) {
@@ -79,7 +86,7 @@ function localCodingProfile(modelId) {
     return { ...localProfile(modelId), endpoint: "ollama" };
 }
 
-function routeForMode(mode, customModel, museModel, localModel, gemmaModel) {
+function routeForMode(mode, customModel, museModel, ultraModel, localModel, gemmaModel) {
     const local = localCodingProfile(localModel);
 
     if (mode === "gemma") {
@@ -95,6 +102,16 @@ function routeForMode(mode, customModel, museModel, localModel, gemmaModel) {
             endpoint: "nvidiaMuse",
         };
         return muse.id === local.id ? [local] : [muse, local];
+    }
+
+    if (mode === "ultra") {
+        const ultra = {
+            id: ultraModel,
+            label: "Nemotron 3 Ultra",
+            summary: "NVIDIA-hosted agentic reasoning and coding model",
+            endpoint: "nvidiaUltra",
+        };
+        return ultra.id === local.id ? [local] : [ultra, local];
     }
 
     if (mode !== "custom") {
@@ -138,6 +155,7 @@ export default class ModelRouter {
         mode,
         customModel = customModelFromEnvironment(),
         museModel = museModelFromEnvironment(),
+        ultraModel = nemotronUltraModelFromEnvironment(),
         localModel = process.env.OLLAMA_MODEL || DEFAULT_LOCAL_MODEL,
         gemmaModel = process.env.OLLAMA_GEMMA_MODEL || DEFAULT_GEMMA_MODEL,
         createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
@@ -160,8 +178,13 @@ export default class ModelRouter {
             throw new Error("NVIDIA_MUSE_MODEL is required when the Power Build route is selected.");
         }
 
+        if (this.mode === "ultra" && !ultraModel) {
+            throw new Error("NVIDIA_API_KEY is required when the Nemotron 3 Ultra route is selected.");
+        }
+
         this.customModel = customModel;
         this.museModel = museModel;
+        this.ultraModel = ultraModel;
         this.localModel = localModel;
         this.gemmaModel = gemmaModel;
         this.createModel = createModel;
@@ -203,7 +226,7 @@ export default class ModelRouter {
         if (this.route) return this.activeProfile;
 
         this.route = this.routeWithAvailableProfiles(
-            routeForMode(this.mode, this.customModel, this.museModel, this.localModel, this.gemmaModel)
+            routeForMode(this.mode, this.customModel, this.museModel, this.ultraModel, this.localModel, this.gemmaModel)
         );
         this.notifyRoute(false);
         return this.activeProfile;

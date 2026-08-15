@@ -90,6 +90,21 @@ keep Qwen as your private no-cost baseline. If `NVIDIA_MUSE_MODEL` is omitted,
 the same current NVIDIA catalog ID is selected automatically whenever
 `NVIDIA_API_KEY` is present.
 
+### Nemotron 3 Ultra route
+
+Choose **Nemotron 3 Ultra · NVIDIA** in either Chat or Projects for NVIDIA's
+hosted agentic reasoning and coding model. It uses the same private
+`NVIDIA_API_KEY` and automatically falls back to local Qwen Coder when NVIDIA
+is temporarily unavailable.
+
+The default NVIDIA catalog model ID is
+`nvidia/nemotron-3-ultra-550b-a55b`. You can override the model or endpoint:
+
+```dotenv
+NVIDIA_NEMOTRON_ULTRA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_NEMOTRON_ULTRA_BASE_URL=https://integrate.api.nvidia.com/v1
+```
+
 ### NVIDIA Safety Guard
 
 The **NVIDIA Safety** toggle in the dashboard optionally checks each request
