@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { gunzipSync } from "node:zlib";
-import { createUiServer, startUiServer } from "../src/ui-server.js";
+import { createUiServer, DEFAULT_TASK_TIMEOUT_MS, resolveTaskTimeout, startUiServer } from "../src/ui-server.js";
 
 async function startServer(server) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -19,6 +19,49 @@ function basicAuthorization(username, password) {
 function toolCall(tool, argumentsValue = {}) {
     return JSON.stringify({ type: "tool_call", tool, arguments: argumentsValue });
 }
+
+test("task timeout settings stay within a safe, predictable range", () => {
+    assert.equal(resolveTaskTimeout(undefined), DEFAULT_TASK_TIMEOUT_MS);
+    assert.equal(resolveTaskTimeout("30000"), 30_000);
+    assert.equal(resolveTaskTimeout("3600000"), 3_600_000);
+    assert.equal(resolveTaskTimeout("29999"), DEFAULT_TASK_TIMEOUT_MS);
+    assert.equal(resolveTaskTimeout("3600001"), DEFAULT_TASK_TIMEOUT_MS);
+    assert.equal(resolveTaskTimeout("not-a-number"), DEFAULT_TASK_TIMEOUT_MS);
+});
+
+test("the dashboard ends a stalled model task at its configured deadline", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({
+        agentRoot: root,
+        taskTimeoutMs: 30,
+        createModel: () => ({
+            generate(_prompt, { signal }) {
+                return new Promise((_resolve, reject) => {
+                    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+                });
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Explain the timeout behavior." }),
+    });
+    const stream = await task.text();
+
+    assert.equal(task.status, 200);
+    assert.match(stream, /Task cancelled by user/);
+    assert.match(stream, /"cancelled":true/);
+    assert.match(stream, /"timedOut":true/);
+    assert.match(stream, /"durationMs":\d+/);
+});
 
 test("the local UI serves its workspace context and streams agent outcomes", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
@@ -94,6 +137,8 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.match(stream, /Qwen 2\.5 Coder 7B/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
+    assert.match(stream, /"durationMs":\d+/);
+    assert.match(stream, /"steps":0/);
 
     const completedHistory = await fetch(`${baseUrl}/api/tasks/history`);
     const historyBody = await completedHistory.json();
@@ -921,9 +966,12 @@ test("the dashboard renders the Smart mode selector and saved handoff", () => {
 
     assert.match(page, /value="smart"/);
     assert.match(page, /value="custom"/);
+    assert.match(page, /model-control-compact/);
+    assert.match(page, /id="model-selection"/);
     assert.match(page, /id="brief-details"/);
     assert.match(script, /\/api\/projects\/brief/);
     assert.match(script, /renderProjectBrief/);
+    assert.match(script, /function updateModelRouteSummary/);
 });
 
 test("the dashboard exposes a build-focused project mode and quick starters", () => {

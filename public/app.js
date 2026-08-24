@@ -19,6 +19,7 @@ const safetyGuard = document.querySelector("#safety-guard");
 const chatModelMode = document.querySelector("#chat-model-mode");
 const modelMode = document.querySelector("#model-mode");
 const modelNote = document.querySelector("#model-note");
+const modelSelection = document.querySelector("#model-selection");
 const modelHealth = document.querySelector("#model-health");
 const connection = document.querySelector("#connection");
 const activeProjectCard = document.querySelector("#active-project");
@@ -63,6 +64,7 @@ const resultCard = document.querySelector(".result-card");
 const resultTitle = document.querySelector("#result-title");
 const resultText = document.querySelector("#result-text");
 const resultMark = document.querySelector("#result-mark");
+const resultMeta = document.querySelector("#result-meta");
 const cosmicBackdrop = document.querySelector(".cosmic-backdrop");
 
 const toolLabels = {
@@ -298,12 +300,17 @@ function restoreModelModePreference() {
 
     if (savedMode && Object.hasOwn(modelNotes, savedMode)) {
       modelMode.value = savedMode;
-      modelNote.textContent = modelNotes[savedMode];
+      updateModelRouteSummary();
     }
   } catch {
     // Browser privacy settings can disable storage. The dashboard still works
     // with its normal Auto default when the preference cannot be read.
   }
+}
+
+function updateModelRouteSummary() {
+  modelNote.textContent = modelNotes[modelMode.value];
+  modelSelection.textContent = modelMode.selectedOptions[0]?.textContent || "Select a model";
 }
 
 function saveModelModePreference(mode) {
@@ -642,17 +649,39 @@ function updateProjectTaskCount() {
   projectTaskCount.textContent = `${projectTaskInput.value.length.toLocaleString()} / 16,000`;
 }
 
-function showResult(text, ok) {
+function formatTaskDuration(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return null;
+  if (durationMs < 1_000) return "under 1 sec";
+  if (durationMs < 60_000) return `${Math.round(durationMs / 1_000)} sec`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.round((durationMs % 60_000) / 1_000);
+  return seconds ? `${minutes} min ${seconds} sec` : `${minutes} min`;
+}
+
+function renderResultMeta({ model, durationMs, steps } = {}) {
+  const details = [];
+  if (typeof model === "string" && model) details.push(model);
+  const duration = formatTaskDuration(durationMs);
+  if (duration) details.push(duration);
+  if (Number.isInteger(steps) && steps > 0) details.push(`${steps} tool step${steps === 1 ? "" : "s"}`);
+
+  resultMeta.hidden = details.length === 0;
+  resultMeta.textContent = details.join(" · ");
+}
+
+function showResult(text, ok, metadata = {}) {
   const awaitingRequirements = ok && isRequirementsPrompt(text);
+  const timedOut = metadata.timedOut === true;
   resultCard.classList.toggle("is-success", ok);
   resultCard.classList.toggle("is-error", !ok);
   resultCard.classList.toggle("is-requirements", awaitingRequirements);
-  resultTitle.textContent = awaitingRequirements ? "Project brief needed" : ok ? "Task complete" : "Task needs attention";
-  resultMark.textContent = awaitingRequirements ? "01" : ok ? "✦" : "!";
+  resultTitle.textContent = awaitingRequirements ? "Project brief needed" : timedOut ? "Task timed out" : ok ? "Task complete" : "Task needs attention";
+  resultMark.textContent = awaitingRequirements ? "01" : timedOut ? "⌛" : ok ? "✦" : "!";
   renderAnswerText(resultText, text);
+  renderResultMeta(metadata);
   if (activeTaskPurpose !== "chat") setRequirementsGuide(awaitingRequirements);
   if (!awaitingRequirements) {
-    showToast(ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
+    showToast(timedOut ? "Task timed out — completed changes were kept." : ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
   }
 }
 
@@ -1673,10 +1702,10 @@ async function readEventStream(response) {
       if (eventName === "model") handleModelRoute(parsed);
       if (eventName === "result") {
         receivedResult = true;
-        showResult(parsed.result, parsed.ok);
+        showResult(parsed.result, parsed.ok, parsed);
         if (parsed.cancelled) {
-          resultTitle.textContent = "Task cancelled";
-          addActivity("Task cancelled", "Completed changes were kept in the active project.", "failed");
+          resultTitle.textContent = parsed.timedOut ? "Task timed out" : "Task cancelled";
+          addActivity(parsed.timedOut ? "Task timed out" : "Task cancelled", parsed.timedOut ? "The maximum task time was reached. Completed changes were kept." : "Completed changes were kept in the active project.", "failed");
           continue;
         }
         const awaitingRequirements = parsed.ok && isRequirementsPrompt(parsed.result);
@@ -1832,7 +1861,7 @@ chatInput.addEventListener("keydown", (event) => {
 });
 
 modelMode.addEventListener("change", () => {
-  modelNote.textContent = modelNotes[modelMode.value];
+  updateModelRouteSummary();
   saveModelModePreference(modelMode.value);
 });
 

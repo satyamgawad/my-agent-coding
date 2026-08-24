@@ -28,6 +28,19 @@ const STATIC_ASSETS = new Map([
     ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
     ["/styles.css", { file: "styles.css", type: "text/css; charset=utf-8" }],
 ]);
+export const DEFAULT_TASK_TIMEOUT_MS = 15 * 60 * 1_000;
+const MIN_TASK_TIMEOUT_MS = 30 * 1_000;
+const MAX_TASK_TIMEOUT_MS = 60 * 60 * 1_000;
+
+export function resolveTaskTimeout(value = process.env.AGENT_TASK_TIMEOUT_MS) {
+    const configured = Number(value);
+
+    if (Number.isInteger(configured) && configured >= MIN_TASK_TIMEOUT_MS && configured <= MAX_TASK_TIMEOUT_MS) {
+        return configured;
+    }
+
+    return DEFAULT_TASK_TIMEOUT_MS;
+}
 
 function securityHeaders() {
     return {
@@ -251,6 +264,7 @@ export function createUiServer({
     modelHealth = new ModelHealth({ listModels: () => listProviderModels({ endpoint: "ollama" }) }),
     accessPassword = "",
     allowProjectPreviews = true,
+    taskTimeoutMs = resolveTaskTimeout(),
     githubPublisher,
     safety = new NvidiaSafety(),
 } = {}) {
@@ -828,6 +842,7 @@ export function createUiServer({
                 id: `task-${++taskSequence}`,
                 controller: new AbortController(),
                 startedAt: Date.now(),
+                timedOut: false,
             };
             activeTask = taskRecord;
             response.writeHead(200, {
@@ -840,6 +855,10 @@ export function createUiServer({
             });
             responseEvent(response, "ready", { message: "The agent is working." });
             const stopHeartbeat = keepSseAlive(response);
+            const taskTimeout = setTimeout(() => {
+                taskRecord.timedOut = true;
+                taskRecord.controller.abort(new Error("Task timed out before completion."));
+            }, taskTimeoutMs);
 
             const model = new ModelRouter({
                 mode,
@@ -858,6 +877,9 @@ export function createUiServer({
                 workspaceManager,
                 projectBrief,
                 onEvent: ({ message, details }) => {
+                    if (details?.tool) {
+                        taskRecord.steps = (taskRecord.steps || 0) + 1;
+                    }
                     responseEvent(response, "progress", publicEvent(message, details));
                 },
             });
@@ -922,15 +944,23 @@ export function createUiServer({
                     result: taskResult,
                     model: model.activeProfile?.label || null,
                     cancelled: taskRecord.controller.signal.aborted,
+                    timedOut: taskRecord.timedOut,
+                    durationMs: Date.now() - taskRecord.startedAt,
+                    steps: taskRecord.steps || 0,
                 });
             } catch (error) {
                 taskResult = `❌ The agent could not complete this task: ${error.message || String(error)}`;
                 responseEvent(response, "result", {
                     ok: false,
                     result: taskResult,
+                    model: model.activeProfile?.label || null,
                     cancelled: taskRecord.controller.signal.aborted,
+                    timedOut: taskRecord.timedOut,
+                    durationMs: Date.now() - taskRecord.startedAt,
+                    steps: taskRecord.steps || 0,
                 });
             } finally {
+                clearTimeout(taskTimeout);
                 try {
                     projectSession.record(
                         conversationId,

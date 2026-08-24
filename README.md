@@ -130,6 +130,11 @@ AGENT_MAX_STEPS=60
 Higher budgets can complete longer tasks, but also increase latency and model
 usage. The normal safety and verification gates still apply.
 
+Each task also has a 15-minute wall-clock deadline so a stalled model or tool
+cannot leave the dashboard working indefinitely. Completed changes are kept.
+Set `AGENT_TASK_TIMEOUT_MS` to a value from 30,000 to 3,600,000 milliseconds
+when a task needs a different limit.
+
 Keep `.env` private. It is ignored by Git and unavailable to the agent's tools.
 
 For a private hosted Docker deployment, also add a long, unique

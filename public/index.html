@@ -142,23 +142,30 @@
             <button class="requirements-starter" id="requirements-starter" type="button" data-requirements-starter>Plan first</button>
           </section>
 
-          <div class="model-control">
-            <div>
-              <label class="muted-label" for="model-mode">MODEL ROUTE</label>
+          <details class="model-control model-control-compact">
+            <summary>
+              <span class="model-summary-copy">
+                <span class="muted-label">MODEL ROUTE</span>
+                <strong id="model-selection">Auto · Qwen Coder</strong>
+              </span>
+              <span class="model-summary-action">Change</span>
+            </summary>
+            <div class="model-options">
               <p id="model-note">Auto uses Qwen Coder locally. Choose a route when you want a specific model or deeper review.</p>
               <p class="model-health" id="model-health" role="status">Checking model availability…</p>
+              <label class="sr-only" for="model-mode">Model route</label>
+              <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
+                <option value="auto" selected>Auto · Qwen Coder</option>
+                <option value="build">Build · plan + deep review</option>
+                <option value="smart">Smart · plan + independent review</option>
+                <option value="local">Local · Qwen Coder</option>
+                <option value="gemma">Gemma · local reasoning</option>
+                <option value="power">Power Build · Muse Glimmer 30B</option>
+                <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
+                <option value="custom">Remote · custom endpoint</option>
+              </select>
             </div>
-            <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
-              <option value="auto" selected>Auto · Qwen Coder</option>
-              <option value="build">Build · plan + deep review</option>
-              <option value="smart">Smart · plan + independent review</option>
-              <option value="local">Local · Qwen Coder</option>
-              <option value="gemma">Gemma · local reasoning</option>
-              <option value="power">Power Build · Muse Glimmer 30B</option>
-              <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
-              <option value="custom">Remote · custom endpoint</option>
-            </select>
-          </div>
+          </details>
 
           <div class="suggestions" aria-label="Task suggestions">
             <button type="button" data-build-prompt="Build a responsive habit tracker web app with add, complete, edit, and delete actions that persist after refresh.">Build web app</button>
@@ -299,6 +306,7 @@
             <span class="result-mark" id="result-mark" aria-hidden="true">✦</span>
           </div>
           <div class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</div>
+          <p class="result-meta" id="result-meta" hidden></p>
         </article>
       </section>
 

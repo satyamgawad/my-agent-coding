@@ -146,6 +146,19 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .model-control select { min-width: 172px; border: 1px solid rgba(216, 252, 106, .38); border-radius: 9px; padding: 9px 29px 9px 10px; color: var(--ink); background: var(--surface-soft); font-size: 12px; font-weight: 700; outline: none; }
 .model-control select:focus-visible { border-color: var(--aqua); box-shadow: 0 0 0 3px rgba(137, 229, 206, .13); }
 .model-control select:disabled { cursor: wait; opacity: .55; }
+.model-control-compact { display: block; padding: 0; }
+.model-control-compact summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 50px; padding: 8px 0; cursor: pointer; list-style: none; }
+.model-control-compact summary::-webkit-details-marker { display: none; }
+.model-summary-copy { display: grid; gap: 2px; min-width: 0; }
+.model-summary-copy .muted-label { margin: 0; }
+.model-summary-copy strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.model-summary-action { color: var(--aqua); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.model-control-compact[open] .model-summary-action { color: var(--muted); }
+.model-control-compact[open] .model-summary-action::after { content: " · Close"; }
+.model-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 18px; padding: 0 0 12px; }
+.model-options #model-note, .model-options .model-health { grid-column: 1; max-width: none; }
+.model-options select { grid-column: 2; grid-row: 1 / span 2; }
+.result-meta { margin: 14px 0 0; color: #858d83; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
 
 .suggestions { display: flex; flex-wrap: wrap; gap: 7px; }
 .suggestions button {
@@ -372,6 +385,10 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
   .run-button, .cancel-button { flex: 1; }
   .model-control { align-items: flex-start; flex-direction: column; }
   .model-control select { width: 100%; }
+  .model-control-compact { display: block; }
+  .model-control-compact summary { width: 100%; }
+  .model-options { display: block; }
+  .model-options .model-health { margin-bottom: 9px; }
   .project-runner { align-items: flex-start; }
   .project-runner { flex-wrap: wrap; }
   .delivery-actions { grid-template-columns: 1fr; }
