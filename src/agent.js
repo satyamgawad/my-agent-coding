@@ -8,6 +8,7 @@ import ProjectPlan from "./project-plan.js";
 
 export const DEFAULT_MAX_STEPS = 30;
 export const MAX_STEPS = resolveMaxSteps();
+const MAX_REPEATED_TOOL_FAILURES = 3;
 
 const INSPECTION_TOOLS = new Set(["listFiles", "readFile", "projectTree", "projectReadiness", "readProjectPlan", "readAgentSource", "webSearch", "readWebPage", "visualCheck"]);
 const MODIFICATION_TOOLS = new Map([
@@ -34,6 +35,8 @@ const NEW_PROJECT_TASK = /\b(?:create|build|make|start|scaffold|develop|generate
 const GENERIC_PROJECT_REQUEST = /^\s*(?:please\s+)?(?:create|build|make|start|scaffold|develop|generate)\s+(?:me\s+)?(?:a|an|the)?\s*(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\s*[.!?]*\s*$/i;
 const LARGE_APPLICATION_TASK = /\b(?:large|big|complex|multi[-\s]?(?:phase|page|feature|module)|full[-\s]?stack|production|enterprise|roadmap|milestone|authentication|authorization|database|migration|deployment|backend|microservice)\b/i;
 const SELF_IMPROVEMENT_TASK = /\b(?:self[-\s]?improv(?:e|ement)|(?:improv(?:e|ement)|upgrade).{0,48}\b(?:agent|yourself|own source)|(?:agent|yourself|own source).{0,48}\b(?:improv(?:e|ement)|learn))\b/i;
+const READ_ONLY_PROJECT_TASK = /\b(?:inspect|explain|describe|analy[sz]e|review|summari[sz]e|show|list)\b/i;
+const PROJECT_CHANGE_REQUEST = /\b(?:add|build|change|create|delete|edit|fix|implement|make|modify|remove|repair|replace|update|write)\b/i;
 const TASK_CANCELLED_RESULT = "❌ Task cancelled by user. Changes already completed were kept.";
 
 export function cleanResponseText(value) {
@@ -718,9 +721,7 @@ export default class Agent {
         const smartMode = smart ?? (["smart", "build"].includes(this.model?.mode));
         const selfImprovementTask = SELF_IMPROVEMENT_TASK.test(task);
         const newProjectTask = NEW_PROJECT_TASK.test(task);
-        let requiresExistingProjectInspection = !newProjectTask && Boolean(
-            this.workspaceManager?.getContext().project
-        );
+        const readOnlyProjectTask = READ_ONLY_PROJECT_TASK.test(task) && !PROJECT_CHANGE_REQUEST.test(task);
         const activeTools = selfImprovementTask && this.workspaceManager
             ? {
                 ...this.tools,
@@ -835,11 +836,10 @@ export default class Agent {
         let projectReadinessVerified = false;
         let sourceTestRequired = false;
         let sourceTestPassed = false;
-        let inspectedExistingProjectTree = !requiresExistingProjectInspection;
-        let inspectedExistingProjectFile = !requiresExistingProjectInspection;
         let inspectedAgentSource = !selfImprovementTask;
         const verifiedSourceFiles = new Set();
         const verifiedTestFiles = new Set();
+        let repeatedFailure = { signature: null, count: 0 };
 
         for (let step = 0; step < MAX_STEPS; step += 1) {
             if (signal?.aborted) {
@@ -873,6 +873,16 @@ export default class Agent {
             if (parseError) {
                 latestResult = normalizeToolError("model", parseError);
                 completed.push(resultSummary(latestResult));
+                if (repeatedFailure.signature === "model") {
+                    repeatedFailure.count += 1;
+                } else {
+                    repeatedFailure = { signature: "model", count: 1 };
+                }
+
+                if (repeatedFailure.count >= MAX_REPEATED_TOOL_FAILURES) {
+                    return `❌ The model returned invalid tool calls ${MAX_REPEATED_TOOL_FAILURES} times. Start a new task or use the automatic NVIDIA route if it is configured.`;
+                }
+
                 prompt = feedbackPrompt(
                     task,
                     latestResult,
@@ -1022,17 +1032,16 @@ export default class Agent {
                         agentError(validation.error, "INVALID_TOOL_ARGUMENTS")
                     );
                 } else if (
-                    PROJECT_MODIFICATION_TOOLS.has(decision.tool) &&
-                    (!inspectedExistingProjectTree || !inspectedExistingProjectFile)
+                    readOnlyProjectTask && PROJECT_MODIFICATION_TOOLS.has(decision.tool)
                 ) {
                     result = normalizeToolError(
                         decision.tool,
                         agentError(
-                            "Inspect the existing project structure and a relevant file before editing it.",
-                            "PROJECT_NOT_INSPECTED"
+                            "This is an inspection-only task, so project files must not be changed.",
+                            "READ_ONLY_TASK"
                         )
                     );
-                    instruction = "Before editing an existing project, call projectTree or listFiles for the workspace, then readFile for a relevant file.";
+                    instruction = "Inspect with projectTree or listFiles using directory \".\", read a relevant file, then report the findings without editing.";
                 } else if (
                     AGENT_SOURCE_MODIFICATION_TOOLS.has(decision.tool) &&
                     !inspectedAgentSource
@@ -1057,14 +1066,6 @@ export default class Agent {
                         )
                     );
                     instruction = `Verify the actual file by calling ${pendingVerificationTool} with filePath: ${JSON.stringify(pendingVerification)}.`;
-                } else if (
-                    decision.tool === "selectProject" &&
-                    this.workspaceManager?.getContext().project === decision.arguments.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-                ) {
-                    result = normalizeToolError(
-                        decision.tool,
-                        agentError("That project is already active.", "PROJECT_ALREADY_SELECTED")
-                    );
                 } else if (
                     INSPECTION_TOOLS.has(decision.tool) &&
                     consecutiveInspections >= MAX_CONSECUTIVE_INSPECTIONS
@@ -1142,19 +1143,21 @@ export default class Agent {
                     : null,
             });
 
-            if (result.ok && result.tool === "selectProject" && !newProjectTask) {
-                requiresExistingProjectInspection = true;
-                inspectedExistingProjectTree = false;
-                inspectedExistingProjectFile = false;
-            }
+            if (result.ok) {
+                repeatedFailure = { signature: null, count: 0 };
+            } else {
+                const signature = `${result.tool}:${JSON.stringify(decision.arguments)}`;
+                const policyFailure = ["REPEATED_TEST_FAILURE", "REPEATED_INSPECTION"].includes(
+                    result.error.code
+                );
+                repeatedFailure = policyFailure
+                    ? { signature: null, count: 0 }
+                    : repeatedFailure.signature === signature
+                        ? { signature, count: repeatedFailure.count + 1 }
+                        : { signature, count: 1 };
 
-            if (result.ok && requiresExistingProjectInspection) {
-                if (["listFiles", "projectTree"].includes(result.tool)) {
-                    inspectedExistingProjectTree = true;
-                }
-
-                if (result.tool === "readFile") {
-                    inspectedExistingProjectFile = true;
+                if (repeatedFailure.count >= MAX_REPEATED_TOOL_FAILURES) {
+                    return `❌ ${result.tool} failed ${MAX_REPEATED_TOOL_FAILURES} times without progress: ${result.error.message}`;
                 }
             }
 

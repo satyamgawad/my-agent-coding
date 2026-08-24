@@ -89,6 +89,22 @@ function localCodingProfile(modelId) {
 function routeForMode(mode, customModel, museModel, ultraModel, localModel, gemmaModel) {
     const local = localCodingProfile(localModel);
 
+    // The normal route is intentionally simple: prefer the configured
+    // NVIDIA coding model, then fall back to the local model. This keeps the
+    // dashboard useful without asking people to choose between overlapping
+    // model and workflow modes for every task.
+    if (mode === "auto" && ultraModel) {
+        return [
+            {
+                id: ultraModel,
+                label: "Nemotron 3 Ultra",
+                summary: "NVIDIA-hosted coding model with local Qwen fallback",
+                endpoint: "nvidiaUltra",
+            },
+            local,
+        ];
+    }
+
     if (mode === "gemma") {
         const gemma = gemmaProfile(gemmaModel);
         return gemma.id === local.id ? [local] : [gemma, local];
@@ -163,7 +179,7 @@ export default class ModelRouter {
         unavailableProfiles = new Map(),
         now = () => Date.now(),
     } = {}) {
-        const requestedMode = mode || (customModel ? "custom" : "auto");
+        const requestedMode = mode || "auto";
         this.mode = LEGACY_MODEL_MODE_ALIASES[requestedMode] || requestedMode;
 
         if (!MODEL_MODES.has(this.mode)) {

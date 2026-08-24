@@ -59,6 +59,8 @@ test("file tools list, read, write, edit, and produce a protected project tree",
         }
     );
     assert.match(tools.projectTree.execute({ directory: "." }), /📁 src\/\n  📄 message.txt/);
+    assert.match(tools.projectTree.execute({}), /📁 src\/\n  📄 message.txt/);
+    assert.match(tools.projectTree.execute({ directory: "files" }), /📁 src\/\n  📄 message.txt/);
     assert.doesNotMatch(tools.projectTree.execute({ directory: "." }), /\.env/);
     assert.throws(() => tools.readFile.execute({ filePath: ".env" }), /path is protected/);
     assert.throws(

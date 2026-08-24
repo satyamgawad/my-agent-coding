@@ -27,28 +27,13 @@ test("Nemotron prompt documents exactly the registered tool names and contracts"
         assert.equal(prompt.includes(JSON.stringify(definition.arguments)), true);
     }
     assert.doesNotMatch(prompt, /deleteFile/);
-    assert.match(prompt, /never pass the selected project name as a file-tool directory/);
-    assert.match(prompt, /Application delivery standard:/);
-    assert.match(prompt, /keyboard-operable controls/);
-    assert.match(prompt, /behavior-focused tests/);
-    assert.match(prompt, /Full-stack delivery standard:/);
-    assert.match(prompt, /Default to SQLite for a local or single-instance application/);
-    assert.match(prompt, /Never store plaintext passwords/);
-    assert.match(prompt, /GitHub as an opt-in integration/);
-    assert.match(prompt, /Code craftsmanship standard:/);
-    assert.match(prompt, /smallest coherent change/);
-    assert.match(prompt, /regression test should fail before the fix/);
-    assert.match(prompt, /Response and decision standard:/);
-    assert.match(prompt, /Lead with the outcome/);
-    assert.match(prompt, /Never emit raw HTML tags such as <br>/);
-    assert.match(prompt, /time-sensitive, external, or specialized fact/);
-    assert.match(prompt, /Self-improvement and local learning:/);
-    assert.match(prompt, /testAgentSource must pass/);
-    assert.match(prompt, /Prior lessons are advisory evidence/);
-    assert.match(prompt, /Maintain an evidence checklist/);
-    assert.match(prompt, /inspect its tree and relevant files before editing/);
-    assert.match(prompt, /run projectReadiness after the tests pass/);
-    assert.match(prompt, /For a large, multi-phase, or full-stack application, call createProjectPlan next/);
+    assert.match(prompt, /do not add its name to a path/);
+    assert.match(prompt, /Simple workflow:/);
+    assert.match(prompt, /smallest complete solution/);
+    assert.match(prompt, /Immediately read back every changed file/);
+    assert.match(prompt, /Do not repeat the same failing call/);
+    assert.match(prompt, /run projectReadiness after passing tests/);
+    assert.match(prompt, /Use agent-source tools only for an explicit request/);
 });
 
 test("Nemotron sends the current task and normalizes a provider response", async () => {

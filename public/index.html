@@ -66,17 +66,6 @@
             <form class="chat-composer" id="chat-form">
               <label class="sr-only" for="chat-input">Ask a question</label>
               <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask a question, compare ideas, or search current information…" autofocus disabled></textarea>
-              <div class="model-control chat-model-control">
-                <div>
-                  <label class="muted-label" for="chat-model-mode">CHAT MODEL</label>
-                  <p>Use the private local default, or NVIDIA Nemotron 3 Ultra with automatic Qwen fallback.</p>
-                </div>
-                <select id="chat-model-mode" name="chat-mode" disabled>
-                  <option value="auto" selected>Auto · Qwen Coder</option>
-                  <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
-                  <option value="custom">Remote · custom endpoint</option>
-                </select>
-              </div>
               <div class="suggestions" aria-label="Chat suggestions">
                 <button type="button" data-chat-prompt="Explain this concept in simple words: ">Explain a concept</button>
                 <button type="button" data-chat-prompt="Help me compare these options: ">Compare options</button>
@@ -143,34 +132,11 @@
             <button class="requirements-starter" id="requirements-starter" type="button" data-requirements-starter>Plan first</button>
           </section>
 
-          <details class="model-control model-control-compact">
-            <summary>
-              <span class="model-summary-copy">
-                <span class="muted-label">MODEL ROUTE</span>
-                <strong id="model-selection">Auto · Qwen Coder</strong>
-              </span>
-              <span class="model-summary-action">Change</span>
-            </summary>
-            <div class="model-options">
-              <p id="model-note">Auto uses Qwen Coder locally. Choose a route when you want a specific model or deeper review.</p>
-              <p class="model-health" id="model-health" role="status">Checking model availability…</p>
-              <label class="sr-only" for="model-mode">Model route</label>
-              <select id="model-mode" name="mode" aria-describedby="model-note model-health" disabled>
-                <option value="auto" selected>Auto · Qwen Coder</option>
-                <option value="build">Build · plan + deep review</option>
-                <option value="smart">Smart · plan + independent review</option>
-                <option value="local">Local · Qwen Coder</option>
-                <option value="gemma">Gemma · local reasoning</option>
-                <option value="power">Power Build · Muse Glimmer 30B</option>
-                <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
-                <option value="custom">Remote · custom endpoint</option>
-              </select>
-            </div>
-          </details>
+          <p class="route-note">Automatic route: NVIDIA Nemotron 3 Ultra when configured, with local Qwen fallback.</p>
 
           <div class="suggestions" aria-label="Task suggestions">
-            <button type="button" data-build-prompt="Build a responsive habit tracker web app with add, complete, edit, and delete actions that persist after refresh.">Build web app</button>
-            <button type="button" data-build-prompt="Build a polished landing page for a new product with a responsive layout, clear call to action, and accessible navigation.">Build landing page</button>
+            <button type="button" data-prompt="Build a responsive habit tracker web app with add, complete, edit, and delete actions that persist after refresh.">Build web app</button>
+            <button type="button" data-prompt="Build a polished landing page for a new product with a responsive layout, clear call to action, and accessible navigation.">Build landing page</button>
             <button type="button" data-prompt="Run browser visual checks on the active project's static page. Inspect and fix any runtime, responsive, or accessibility issues you find.">Check UI</button>
             <button type="button" data-prompt="Create a simple Todo application with add, complete, and delete actions.">Todo app</button>
             <button type="button" data-prompt="Inspect the active project and explain its structure.">Explain project</button>
@@ -179,10 +145,6 @@
 
           <div class="task-footer">
             <p id="project-task-hint">After a task completes, send a follow-up instruction for the active project.</p>
-            <label class="plan-review-toggle" for="plan-review">
-              <input id="plan-review" type="checkbox">
-              <span>Review plan before changes</span>
-            </label>
             <span class="task-count" id="project-task-count" aria-live="polite">0 / 16,000</span>
             <div class="task-actions">
               <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel task</button>
@@ -259,19 +221,6 @@
             <p class="plan-summary" id="plan-summary" aria-live="polite">Select a project to see its saved milestone plan.</p>
             <ol class="plan-milestones" id="plan-milestones" aria-label="Saved project milestones"></ol>
           </section>
-          <section class="project-brief" aria-labelledby="project-brief-title">
-            <div class="evaluation-heading">
-              <div>
-                <p class="muted-label">SMART MODE BRIEF</p>
-                <h3 id="project-brief-title">Project handoff</h3>
-              </div>
-              <button class="panel-toggle" type="button" data-panel-toggle="project-brief-content" aria-expanded="true">Collapse</button>
-            </div>
-            <div class="collapsible-content" id="project-brief-content">
-              <p class="brief-summary" id="brief-summary" aria-live="polite">Select Smart mode to save a compact handoff for this project.</p>
-              <dl class="brief-details" id="brief-details"></dl>
-            </div>
-          </section>
         </aside>
       </section>
 
@@ -312,7 +261,6 @@
           </div>
           <div class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</div>
           <p class="result-meta" id="result-meta" hidden></p>
-          <button class="approve-plan-button" id="approve-plan" type="button" hidden>Approve &amp; implement</button>
         </article>
       </section>
 
@@ -350,7 +298,7 @@
           <strong id="evaluation-pass-rate">—</strong>
         </div>
         <ul class="agent-evaluation-results" id="evaluation-results" aria-label="Agent evaluation results"></ul>
-        <p class="evaluation-scope">Runs isolated checks for application build, safe existing-project changes, and protected-file handling. <strong>Run live model</strong> uses your selected local or custom model route; the baseline never calls a model.</p>
+        <p class="evaluation-scope">Runs isolated checks for application build, safe existing-project changes, and protected-file handling. <strong>Run live model</strong> uses the same automatic route as the agent; the baseline never calls a model.</p>
       </section>
 
       <section class="task-history-card" aria-labelledby="task-history-title">

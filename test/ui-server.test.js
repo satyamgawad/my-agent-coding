@@ -162,7 +162,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     const stream = await task.text();
     assert.match(stream, /event: ready/);
     assert.match(stream, /event: model/);
-    assert.match(stream, /Qwen 2\.5 Coder 7B/);
+    assert.match(stream, /Nemotron 3 Ultra/);
     assert.match(stream, /event: result/);
     assert.match(stream, /The task is complete/);
     assert.match(stream, /"durationMs":\d+/);
@@ -173,7 +173,7 @@ test("the local UI serves its workspace context and streams agent outcomes", asy
     assert.equal(historyBody.records.length, 1);
     assert.equal(historyBody.records[0].status, "complete");
     assert.equal(historyBody.records[0].project, "notes-app");
-    assert.equal(historyBody.records[0].model, "Qwen 2.5 Coder 7B");
+    assert.equal(historyBody.records[0].model, "Nemotron 3 Ultra");
     assert.equal(Object.hasOwn(historyBody.records[0], "task"), false);
 
     const followUp = await fetch(`${baseUrl}/api/tasks`, {
@@ -988,43 +988,18 @@ test("the dashboard renders private milestone progress for large projects", () =
     assert.match(script, /renderProjectPlan/);
 });
 
-test("the dashboard renders the Smart mode selector and saved handoff", () => {
+test("the dashboard uses one automatic model route", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
-    assert.match(page, /value="smart"/);
-    assert.match(page, /value="custom"/);
-    assert.match(page, /model-control-compact/);
-    assert.match(page, /id="model-selection"/);
-    assert.match(page, /id="brief-details"/);
-    assert.match(script, /\/api\/projects\/brief/);
-    assert.match(script, /renderProjectBrief/);
-    assert.match(script, /function updateModelRouteSummary/);
-});
-
-test("the dashboard exposes a build-focused project mode and quick starters", () => {
-    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
-    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
-
-    assert.match(page, /value="build">Build · plan \+ deep review/);
-    assert.match(page, /value="local">Local · Qwen Coder/);
-    assert.match(page, /value="gemma">Gemma · local reasoning/);
-    assert.match(page, /value="power">Power Build · Muse Glimmer 30B/);
-    assert.match(page, /id="chat-model-mode"/);
-    assert.match(page, /value="custom">Remote · custom endpoint/);
-    assert.match(page, /id="plan-review"/);
-    assert.match(page, /id="approve-plan"/);
-    assert.match(page, /value="ultra">Nemotron 3 Ultra · NVIDIA/);
-    assert.match(page, /data-build-prompt/);
-    assert.match(script, /modelNotes\.build/);
-    assert.match(script, /local: "Use Qwen Coder locally/);
-    assert.match(script, /gemma: "Use Gemma 4 E2B locally/);
-    assert.match(script, /power: "Use NVIDIA-hosted Muse Glimmer 30B/);
-    assert.match(script, /ultra: "Use NVIDIA Nemotron 3 Ultra/);
-    assert.match(script, /purpose === "chat" \? chatModelMode\.value : modelMode\.value/);
-    assert.match(script, /CHAT_MODEL_MODE_STORAGE_KEY/);
-    assert.match(script, /planOnly/);
-    assert.match(script, /approvePlanButton\.addEventListener/);
+    assert.match(page, /Automatic route: NVIDIA Nemotron 3 Ultra when configured/);
+    assert.doesNotMatch(page, /id="model-mode"/);
+    assert.doesNotMatch(page, /id="chat-model-mode"/);
+    assert.doesNotMatch(page, /id="plan-review"/);
+    assert.doesNotMatch(page, /data-build-prompt/);
+    assert.match(script, /mode: "auto"/);
+    assert.doesNotMatch(script, /modelNotes/);
+    assert.doesNotMatch(script, /CHAT_MODEL_MODE_STORAGE_KEY/);
 });
 
 test("the dashboard guides a generic project request into a requirements brief", () => {
@@ -1127,12 +1102,12 @@ test("the dashboard renders live activity, file updates, expandable context, and
     assert.match(page, /id="file-change-list"/);
     assert.match(page, /id="toast-region"/);
     assert.match(page, /data-panel-toggle="conversation-content"/);
-    assert.match(page, /data-panel-toggle="project-brief-content"/);
+    assert.doesNotMatch(page, /project-brief-content/);
     assert.match(script, /function addFileChange/);
     assert.match(script, /function showToast/);
     assert.match(script, /FILE_CHANGE_TOOLS/);
-    assert.match(script, /MODEL_MODE_STORAGE_KEY/);
-    assert.match(script, /restoreModelModePreference/);
+    assert.doesNotMatch(script, /MODEL_MODE_STORAGE_KEY/);
+    assert.doesNotMatch(script, /refreshProjectBrief/);
 });
 
 test("the dashboard deletes only the selected local project after exact confirmation", async (t) => {

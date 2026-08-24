@@ -47,7 +47,7 @@ export const TOOL_ARGUMENT_SCHEMAS = {
         required: { name: { type: "string", nonEmpty: true } },
     },
     listFiles: {
-        required: { directory: { type: "string", nonEmpty: true } },
+        optional: { directory: { type: "string", nonEmpty: true } },
     },
     readFile: {
         required: { filePath: { type: "string", nonEmpty: true } },
@@ -67,7 +67,7 @@ export const TOOL_ARGUMENT_SCHEMAS = {
         optional: { replaceAll: { type: "boolean" } },
     },
     projectTree: {
-        required: { directory: { type: "string", nonEmpty: true } },
+        optional: { directory: { type: "string", nonEmpty: true } },
     },
     projectReadiness: {},
     createProjectPlan: {

@@ -16,12 +16,6 @@ const chatTurns = document.querySelector("#chat-turns");
 const chatEmpty = document.querySelector("#chat-empty");
 const clearChatButton = document.querySelector("#clear-chat");
 const safetyGuard = document.querySelector("#safety-guard");
-const chatModelMode = document.querySelector("#chat-model-mode");
-const modelMode = document.querySelector("#model-mode");
-const planReview = document.querySelector("#plan-review");
-const modelNote = document.querySelector("#model-note");
-const modelSelection = document.querySelector("#model-selection");
-const modelHealth = document.querySelector("#model-health");
 const connection = document.querySelector("#connection");
 const activeProjectCard = document.querySelector("#active-project");
 const activeProject = document.querySelector("#active-project strong");
@@ -40,8 +34,6 @@ const evaluationChecks = document.querySelector("#evaluation-checks");
 const planProgress = document.querySelector("#plan-progress");
 const planSummary = document.querySelector("#plan-summary");
 const planMilestones = document.querySelector("#plan-milestones");
-const briefSummary = document.querySelector("#brief-summary");
-const briefDetails = document.querySelector("#brief-details");
 const runEvaluationsButton = document.querySelector("#run-evaluations");
 const runLiveEvaluationsButton = document.querySelector("#run-live-evaluations");
 const agentEvaluationStatus = document.querySelector("#evaluation-status");
@@ -66,7 +58,6 @@ const resultTitle = document.querySelector("#result-title");
 const resultText = document.querySelector("#result-text");
 const resultMark = document.querySelector("#result-mark");
 const resultMeta = document.querySelector("#result-meta");
-const approvePlanButton = document.querySelector("#approve-plan");
 const cosmicBackdrop = document.querySelector(".cosmic-backdrop");
 
 const toolLabels = {
@@ -87,17 +78,6 @@ const toolLabels = {
   webSearch: "Searched the public web",
   readWebPage: "Read a public web page",
   visualCheck: "Ran browser visual checks",
-};
-
-const modelNotes = {
-  auto: "Auto uses the free local Qwen coding model through Ollama.",
-  build: "Build uses the local coding model, creates a project brief, and independently reviews the delivered result.",
-  smart: "Uses the local coding model, creates a compact task brief, and runs an independent completion review. It uses additional model calls.",
-  local: "Use Qwen Coder locally through Ollama. Your project content stays on this computer.",
-  gemma: "Use Gemma 4 E2B locally through Ollama for general reasoning. This dashboard currently sends text tasks, and Qwen Coder remains the fallback.",
-  power: "Use NVIDIA-hosted Muse Glimmer 30B for demanding project work. It needs NVIDIA_MUSE_MODEL and NVIDIA_API_KEY; Qwen Coder is the fallback.",
-  ultra: "Use NVIDIA Nemotron 3 Ultra for demanding reasoning, planning, and coding. It needs NVIDIA_API_KEY; Qwen Coder remains the fallback.",
-  custom: "Uses the optional remote model configured in your private environment, then falls back to your local model if it is unavailable.",
 };
 
 let workspaceContext = { project: null };
@@ -123,15 +103,6 @@ let savedProjectPlan = {
   progress: { completed: 0, total: 0 },
   milestones: [],
   message: "Select a project to see its saved milestone plan.",
-};
-let savedProjectBrief = {
-  state: "idle",
-  project: null,
-  goal: null,
-  plan: null,
-  outcome: null,
-  updatedAt: null,
-  message: "Select Smart mode to save a compact handoff for this project.",
 };
 let agentEvaluation = {
   state: "loading",
@@ -169,14 +140,11 @@ let taskStatusKnown = false;
 let recoveringActiveTask = false;
 let activeTaskPoll = null;
 let staticPreviewRequest = 0;
-let pendingPlanTask = null;
 
 const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
 const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/preview/status"];
 const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
-const MODEL_MODE_STORAGE_KEY = "my-coding-agent:model-mode";
-const CHAT_MODEL_MODE_STORAGE_KEY = "my-coding-agent:chat-model-mode";
 const WORKSPACE_VIEW_STORAGE_KEY = "my-coding-agent:workspace-view";
 const SAFETY_GUARD_STORAGE_KEY = "my-coding-agent:nvidia-safety-enabled";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
@@ -297,53 +265,6 @@ function setConnection(text, offline = false) {
   connection.firstElementChild.style.background = offline ? "var(--coral)" : "var(--aqua)";
 }
 
-function restoreModelModePreference() {
-  try {
-    const savedMode = window.localStorage.getItem(MODEL_MODE_STORAGE_KEY);
-
-    if (savedMode && Object.hasOwn(modelNotes, savedMode)) {
-      modelMode.value = savedMode;
-      updateModelRouteSummary();
-    }
-  } catch {
-    // Browser privacy settings can disable storage. The dashboard still works
-    // with its normal Auto default when the preference cannot be read.
-  }
-}
-
-function updateModelRouteSummary() {
-  modelNote.textContent = modelNotes[modelMode.value];
-  modelSelection.textContent = modelMode.selectedOptions[0]?.textContent || "Select a model";
-}
-
-function saveModelModePreference(mode) {
-  try {
-    window.localStorage.setItem(MODEL_MODE_STORAGE_KEY, mode);
-  } catch {
-    // A selected route is still used for the current task if browser storage
-    // is unavailable; only persistence is skipped.
-  }
-}
-
-function restoreChatModelModePreference() {
-  try {
-    const savedMode = window.localStorage.getItem(CHAT_MODEL_MODE_STORAGE_KEY);
-    if (["auto", "ultra", "custom"].includes(savedMode)) {
-      chatModelMode.value = savedMode;
-    }
-  } catch {
-    // Chat still uses the local Auto default when browser storage is unavailable.
-  }
-}
-
-function saveChatModelModePreference() {
-  try {
-    window.localStorage.setItem(CHAT_MODEL_MODE_STORAGE_KEY, chatModelMode.value);
-  } catch {
-    // The selected Chat route still applies to this request when storage is unavailable.
-  }
-}
-
 function restoreSafetyGuardPreference() {
   try {
     safetyGuard.checked = window.localStorage.getItem(SAFETY_GUARD_STORAGE_KEY) === "true";
@@ -401,18 +322,12 @@ function setRunning(isRunning) {
   chatRunButton.disabled = taskControlsDisabled;
   chatInput.disabled = taskControlsDisabled;
   safetyGuard.disabled = taskControlsDisabled;
-  chatModelMode.disabled = taskControlsDisabled;
-  modelMode.disabled = taskControlsDisabled;
-  planReview.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
   for (const control of document.querySelectorAll("[data-chat-prompt]")) {
-    control.disabled = taskControlsDisabled;
-  }
-  for (const control of document.querySelectorAll("[data-build-prompt]")) {
     control.disabled = taskControlsDisabled;
   }
   for (const control of document.querySelectorAll("[data-requirements-starter]")) {
@@ -474,7 +389,6 @@ function showRecoveredTask(status, { announce = false, replaceActivity = false }
   resultTitle.textContent = status.state === "cancelling" ? "Cancelling task" : "Agent is working";
   resultMark.textContent = "…";
   resultText.textContent = "This task began before this dashboard connection. Its live trace cannot be replayed, but it is still running and can be cancelled.";
-  approvePlanButton.hidden = true;
   resultCard.classList.remove("is-success", "is-error");
 
   if (shouldAnnounce) {
@@ -684,8 +598,6 @@ function showResult(text, ok, metadata = {}) {
   resultMark.textContent = awaitingRequirements ? "01" : timedOut ? "⌛" : ok ? "✦" : "!";
   renderAnswerText(resultText, text);
   renderResultMeta(metadata);
-  const awaitingApproval = metadata.planOnly === true && ok && !metadata.cancelled;
-  approvePlanButton.hidden = !awaitingApproval || !pendingPlanTask;
   if (activeTaskPurpose !== "chat") setRequirementsGuide(awaitingRequirements);
   if (!awaitingRequirements) {
     showToast(timedOut ? "Task timed out — completed changes were kept." : ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
@@ -914,29 +826,6 @@ function renderProjectPlan() {
   }
 }
 
-function renderProjectBrief() {
-  briefSummary.textContent = savedProjectBrief.message
-    || "Smart mode brief is temporarily unavailable.";
-  briefDetails.textContent = "";
-
-  if (savedProjectBrief.state !== "ready") return;
-
-  for (const [label, value] of [
-    ["LAST GOAL", savedProjectBrief.goal],
-    ["APPROACH", savedProjectBrief.plan],
-    ["VERIFIED OUTCOME", savedProjectBrief.outcome],
-  ]) {
-    if (!value) continue;
-    const item = document.createElement("div");
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const detail = document.createElement("dd");
-    detail.textContent = value;
-    item.append(term, detail);
-    briefDetails.append(item);
-  }
-}
-
 async function refreshProjectEvaluation() {
   const projectAtRequest = workspaceContext.project;
 
@@ -1007,45 +896,6 @@ async function refreshProjectPlan() {
   }
 
   renderProjectPlan();
-}
-
-async function refreshProjectBrief() {
-  const projectAtRequest = workspaceContext.project;
-
-  if (!projectAtRequest) {
-    savedProjectBrief = {
-      state: "idle",
-      project: null,
-      goal: null,
-      plan: null,
-      outcome: null,
-      updatedAt: null,
-      message: "Select a project to use its Smart mode brief.",
-    };
-    renderProjectBrief();
-    return;
-  }
-
-  try {
-    const response = await fetch("/api/projects/brief", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error("Smart mode brief is unavailable.");
-    const brief = await response.json();
-    if (workspaceContext.project !== projectAtRequest) return;
-    savedProjectBrief = brief;
-  } catch {
-    if (workspaceContext.project !== projectAtRequest) return;
-    savedProjectBrief = {
-      state: "unavailable",
-      project: projectAtRequest,
-      goal: null,
-      plan: null,
-      outcome: null,
-      updatedAt: null,
-      message: "Smart mode project brief is temporarily unavailable.",
-    };
-  }
-
-  renderProjectBrief();
 }
 
 function renderAgentEvaluation() {
@@ -1354,14 +1204,14 @@ async function runAgentEvaluations(mode = "deterministic") {
   runEvaluationsButton.textContent = "Running…";
   runLiveEvaluationsButton.textContent = "Running…";
   agentEvaluationStatus.textContent = isLive
-    ? "Running live model checks with the selected model route…"
+    ? "Running live model checks with the automatic model route…"
     : "Running isolated local baseline checks…";
 
   try {
     const response = await fetch("/api/evaluations/run", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ mode, modelMode: modelMode.value }),
+      body: JSON.stringify({ mode, modelMode: "auto" }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "The evaluation suite could not finish.");
@@ -1491,42 +1341,6 @@ async function refreshProjectStatus() {
   renderProjectRunner();
 }
 
-function renderModelHealth(health) {
-  if (health.status === "unknown") {
-    modelHealth.textContent = "Model status is temporarily unavailable. Tasks can still use automatic fallback.";
-    modelHealth.className = "model-health is-unknown";
-    return;
-  }
-
-  const unavailable = (health.models || []).filter((profile) => profile.available === false);
-  if (health.status === "unavailable") {
-    modelHealth.textContent = "None of the configured model routes are available right now. The agent will retry when one returns.";
-    modelHealth.className = "model-health is-degraded";
-    return;
-  }
-
-  if (unavailable.length === 0) {
-    modelHealth.textContent = `All ${health.models?.length || 0} model routes are available.`;
-    modelHealth.className = "model-health is-ready";
-    return;
-  }
-
-  const labels = unavailable.map((profile) => profile.label).join(", ");
-  modelHealth.textContent = `Fallback ready · unavailable: ${labels}.`;
-  modelHealth.className = "model-health is-degraded";
-}
-
-async function refreshModelHealth() {
-  try {
-    const response = await fetch("/api/models/health", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error("Model health is unavailable.");
-    renderModelHealth(await response.json());
-  } catch {
-    modelHealth.textContent = "Model status is temporarily unavailable. Tasks can still use automatic fallback.";
-    modelHealth.className = "model-health is-unknown";
-  }
-}
-
 async function refreshContext() {
   try {
     const response = await fetch("/api/context", { headers: { accept: "application/json" } });
@@ -1545,7 +1359,6 @@ async function refreshContext() {
       refreshStaticPreviewStatus(),
       refreshProjectEvaluation(),
       refreshProjectPlan(),
-      refreshProjectBrief(),
       refreshProjectConversation(),
       refreshGitHubStatus(),
     ]);
@@ -1578,7 +1391,7 @@ async function deleteActiveProject() {
   if (!project || deleteProjectButton.disabled) return;
 
   const confirmation = window.prompt(
-    `This permanently deletes the local project "${project}" and its saved Smart mode plan and brief. Type ${project} to confirm.`
+    `This permanently deletes the local project "${project}" and its saved private plan metadata. Type ${project} to confirm.`
   );
 
   if (confirmation === null) return;
@@ -1709,7 +1522,6 @@ async function readEventStream(response) {
       if (eventName === "model") handleModelRoute(parsed);
       if (eventName === "result") {
         receivedResult = true;
-        if (parsed.planOnly && parsed.ok) pendingPlanTask = pendingPlanTask || activePlanTask;
         showResult(parsed.result, parsed.ok, parsed);
         if (parsed.cancelled) {
           resultTitle.textContent = parsed.timedOut ? "Task timed out" : "Task cancelled";
@@ -1730,26 +1542,19 @@ async function readEventStream(response) {
   return receivedResult;
 }
 
-let activePlanTask = null;
-
-async function runTask(task, purpose = "project", { planOnly = false } = {}) {
+async function runTask(task, purpose = "project") {
   activeTaskId = null;
   activeTaskPurpose = purpose;
-  activePlanTask = planOnly ? task : null;
-  if (planOnly) pendingPlanTask = null;
   let taskStarted = false;
   let recoveredTask = false;
   setRunning(true);
   clearActivity();
-  addActivity(purpose === "chat" ? "Chat message sent" : planOnly ? "Plan review requested" : "Project task submitted", task, "user");
+  addActivity(purpose === "chat" ? "Chat message sent" : "Project task submitted", task, "user");
   resultTitle.textContent = "Agent is working";
   resultMark.textContent = "…";
   resultText.textContent = purpose === "chat"
     ? "Preparing a project-safe answer."
-    : planOnly
-      ? "Preparing a review plan. No project files will be changed."
-      : "Following the task, checking changes, and waiting to verify the result.";
-  approvePlanButton.hidden = true;
+    : "Following the task, checking changes, and waiting to verify the result.";
   resultCard.classList.remove("is-success", "is-error", "is-requirements");
   if (purpose === "project") setRequirementsGuide(false);
 
@@ -1757,7 +1562,7 @@ async function runTask(task, purpose = "project", { planOnly = false } = {}) {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: purpose === "chat" ? chatModelMode.value : modelMode.value, purpose, planOnly, safety: safetyGuard.checked }),
+      body: JSON.stringify({ task, mode: "auto", purpose, safety: safetyGuard.checked }),
     });
 
     if (!response.ok) {
@@ -1845,7 +1650,7 @@ projectTaskForm.addEventListener("submit", (event) => {
     projectTaskHint.textContent = "Add a short project task description to begin.";
     return;
   }
-  runTask(task, "project", { planOnly: planReview.checked });
+  runTask(task, "project");
 });
 
 chatForm.addEventListener("submit", (event) => {
@@ -1873,20 +1678,6 @@ chatInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     chatForm.requestSubmit();
   }
-});
-
-modelMode.addEventListener("change", () => {
-  updateModelRouteSummary();
-  saveModelModePreference(modelMode.value);
-});
-
-chatModelMode.addEventListener("change", saveChatModelModePreference);
-
-approvePlanButton.addEventListener("click", () => {
-  if (!pendingPlanTask || activeTaskId) return;
-  const task = pendingPlanTask;
-  pendingPlanTask = null;
-  runTask(task, "project");
 });
 
 safetyGuard.addEventListener("change", saveSafetyGuardPreference);
@@ -1943,17 +1734,6 @@ for (const suggestion of document.querySelectorAll("[data-chat-prompt]")) {
   });
 }
 
-for (const suggestion of document.querySelectorAll("[data-build-prompt]")) {
-  suggestion.addEventListener("click", () => {
-    projectTaskInput.value = suggestion.dataset.buildPrompt;
-    updateProjectTaskCount();
-    modelMode.value = "build";
-    modelNote.textContent = modelNotes.build;
-    saveModelModePreference("build");
-    projectTaskInput.focus();
-  });
-}
-
 requirementsStarter.addEventListener("click", () => {
   if (requirementsGuide.classList.contains("is-awaiting")) {
     projectTaskInput.focus();
@@ -1983,8 +1763,6 @@ window.addEventListener("scroll", () => {
 
 updateCosmicParallax();
 
-restoreModelModePreference();
-restoreChatModelModePreference();
 restoreSafetyGuardPreference();
 restoreWorkspaceView();
 updateProjectTaskCount();
@@ -1992,7 +1770,6 @@ setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();
 refreshChatConversation();
-refreshModelHealth();
 refreshAgentEvaluation();
 refreshTaskHistory();
 refreshGitHubStatus();

@@ -33,7 +33,7 @@ export const TOOL_DEFINITIONS = {
     },
     listFiles: {
         description: "List unprotected files and folders in the active project.",
-        arguments: { directory: "string" },
+        arguments: { directory: "string (optional; defaults to .)" },
     },
     readFile: {
         description: "Read an existing file in the active project.",
@@ -55,7 +55,7 @@ export const TOOL_DEFINITIONS = {
     },
     projectTree: {
         description: "Recursively show the active project's unprotected file structure.",
-        arguments: { directory: "string" },
+        arguments: { directory: "string (optional; defaults to .)" },
     },
     projectReadiness: {
         description: "Evaluate the active project's deterministic implementation, manifest, test, and documentation readiness checks.",

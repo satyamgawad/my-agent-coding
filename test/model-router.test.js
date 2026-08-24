@@ -21,10 +21,11 @@ test("the default route uses the free local Qwen coding model", () => {
     assert.match(MODEL_PROFILES.local.summary, /local Ollama/i);
 });
 
-test("automatic routing keeps the selected local model for a task", async () => {
+test("automatic routing keeps the selected local model when NVIDIA is not configured", async () => {
     const used = [];
     const router = new ModelRouter({
         customModel: null,
+        ultraModel: null,
         createModel: (profile) => ({
             async generate() {
                 used.push(profile.id);
@@ -40,9 +41,29 @@ test("automatic routing keeps the selected local model for a task", async () => 
     assert.equal(router.activeProfile.id, DEFAULT_LOCAL_MODEL);
 });
 
-test("Auto, Build, Smart, and Local modes all use the local model by default", () => {
+test("automatic routing prefers Nemotron 3 Ultra when NVIDIA is configured", async () => {
+    const used = [];
+    const router = new ModelRouter({
+        ultraModel: DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL,
+        createModel: (profile) => ({
+            async generate() {
+                used.push({ id: profile.id, endpoint: profile.endpoint });
+                return responseFor(profile);
+            },
+        }),
+    });
+
+    await router.generate("Inspect the active project.");
+
+    assert.deepEqual(used, [{
+        id: DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL,
+        endpoint: "nvidiaUltra",
+    }]);
+});
+
+test("optional workflow modes keep using the local model when NVIDIA is unavailable", () => {
     for (const mode of ["auto", "build", "smart", "local"]) {
-        const router = new ModelRouter({ mode, customModel: null });
+        const router = new ModelRouter({ mode, customModel: null, ultraModel: null });
         assert.equal(router.selectRoute("Build a dashboard.").id, DEFAULT_LOCAL_MODEL);
     }
 });

@@ -298,9 +298,8 @@ test("agent limits repeated failed source reads and explains that a file path is
 
     const result = await agent.run("Improve the agent's own source.");
 
-    assert.match(result, /last tool action \(readAgentSource\) failed/);
+    assert.match(result, /readAgentSource failed 3 times without progress/);
     assert.match(prompts[1], /only reads one safe source file, not a directory/);
-    assert.match(prompts[7], /REPEATED_INSPECTION/);
 });
 
 test("agent suppresses verbose model reasoning after a failed tool instead of presenting it as completion", async (t) => {
@@ -346,7 +345,7 @@ test("agent blocks repetitive inspection and tells the model to implement or tes
     assert.match(prompts[8], /implementation action, or run test/);
 });
 
-test("agent blocks re-selecting the already active project", async (t) => {
+test("agent accepts re-selecting the already active project", async (t) => {
     const prompts = [];
     const { agent } = createAgent(
         t,
@@ -360,13 +359,39 @@ test("agent blocks re-selecting the already active project", async (t) => {
 
     assert.match(
         await agent.run("Select the active project."),
-        /last tool action \(selectProject\) failed/
+        /I selected it again/
     );
-    assert.match(prompts[2], /PROJECT_ALREADY_SELECTED/);
-    assert.match(prompts[2], /already active/);
 });
 
-test("agent inspects an existing project before allowing a source edit", async (t) => {
+test("agent keeps inspection-only tasks read-only", async (t) => {
+    const { root, workspaceManager, tools } = createTestWorkspace(t);
+    workspaceManager.createProject("Inspection");
+    const filePath = path.join(root, "projects", "inspection", "note.txt");
+    fs.writeFileSync(filePath, "before\n");
+    const prompts = [];
+    const agent = new Agent(
+        scriptedModel([
+            toolCall("editFile", {
+                filePath: "note.txt",
+                oldText: "before",
+                newText: "after",
+            }),
+            toolCall("projectTree", {}),
+            toolCall("readFile", { filePath: "note.txt" }),
+            { content: "The project contains note.txt with its original content." },
+        ], prompts),
+        { workspaceManager, tools }
+    );
+
+    assert.equal(
+        await agent.run("Inspect the active project and explain its structure."),
+        "The project contains note.txt with its original content."
+    );
+    assert.equal(fs.readFileSync(filePath, "utf8"), "before\n");
+    assert.match(prompts[1], /inspection-only task/);
+});
+
+test("agent permits a precise existing-project edit and verifies it", async (t) => {
     const { root, workspaceManager, tools } = createTestWorkspace(t);
     workspaceManager.createProject("Inspected");
     fs.writeFileSync(path.join(root, "projects", "inspected", "note.txt"), "before\n");
@@ -377,13 +402,6 @@ test("agent inspects an existing project before allowing a source edit", async (
     const prompts = [];
     const agent = new Agent(
         scriptedModel([
-            toolCall("editFile", {
-                filePath: "note.txt",
-                oldText: "before",
-                newText: "after",
-            }),
-            toolCall("projectTree", { directory: "." }),
-            toolCall("readFile", { filePath: "note.txt" }),
             toolCall("editFile", {
                 filePath: "note.txt",
                 oldText: "before",
@@ -400,15 +418,13 @@ test("agent inspects an existing project before allowing a source edit", async (
         await agent.run("Update the selected note file."),
         "Updated and verified the existing note."
     );
-    assert.match(prompts[1], /PROJECT_NOT_INSPECTED/);
-    assert.match(prompts[1], /projectTree or listFiles/);
     assert.equal(
         fs.readFileSync(path.join(root, "projects", "inspected", "note.txt"), "utf8"),
         "after\n"
     );
 });
 
-test("agent resets inspection evidence after switching to another existing project", async (t) => {
+test("agent edits the newly selected project without a redundant inspection gate", async (t) => {
     const { root, workspaceManager, tools } = createTestWorkspace(t);
     workspaceManager.createProject("First");
     workspaceManager.createProject("Second");
@@ -426,16 +442,7 @@ test("agent resets inspection evidence after switching to another existing proje
     const prompts = [];
     const agent = new Agent(
         scriptedModel([
-            toolCall("projectTree", { directory: "." }),
-            toolCall("readFile", { filePath: "note.txt" }),
             toolCall("selectProject", { name: "Second" }),
-            toolCall("editFile", {
-                filePath: "note.txt",
-                oldText: "second",
-                newText: "updated",
-            }),
-            toolCall("projectTree", { directory: "." }),
-            toolCall("readFile", { filePath: "note.txt" }),
             toolCall("editFile", {
                 filePath: "note.txt",
                 oldText: "second",
@@ -452,7 +459,6 @@ test("agent resets inspection evidence after switching to another existing proje
         await agent.run("Update the note in the selected project."),
         "Updated and verified the second project."
     );
-    assert.match(prompts[4], /PROJECT_NOT_INSPECTED/);
     assert.equal(
         fs.readFileSync(path.join(root, "projects", "second", "note.txt"), "utf8"),
         "updated\n"
@@ -643,6 +649,21 @@ test("agent stops safely at the maximum step limit", async (t) => {
     const result = await agent.run("Loop forever.");
     assert.match(result, new RegExp(`Stopped after ${MAX_STEPS} agent steps`));
     assert.match(result, /Completed: listProjects:ok/);
+});
+
+test("agent stops repeated failed tool calls early with the underlying error", async (t) => {
+    const { agent } = createAgent(
+        t,
+        [
+            toolCall("createProject", { name: "Missing File" }),
+            ...Array.from({ length: 3 }, () => toolCall("readFile", { filePath: "missing.txt" })),
+        ]
+    );
+
+    assert.equal(
+        await agent.run("Read the missing file."),
+        "❌ readFile failed 3 times without progress: The requested file does not exist. Use writeFile to create it, or inspect the project tree first."
+    );
 });
 
 test("agent retains tool history across model calls", async (t) => {

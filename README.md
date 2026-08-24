@@ -1,6 +1,6 @@
 # My Coding Agent
 
-My Coding Agent is a small, safety-conscious local coding agent powered by Ollama. It accepts natural-language coding instructions, chooses from a validated set of tools, and works only in a generated application workspace.
+My Coding Agent is a small, safety-conscious coding agent. It uses NVIDIA Nemotron 3 Ultra automatically when an NVIDIA key is configured, with local Ollama Qwen as a private fallback. It accepts natural-language coding instructions and works only in a generated application workspace.
 
 The agent source and generated applications are deliberately separate:
 
@@ -37,71 +37,23 @@ once:
 npm run setup:ollama
 ```
 
-Auto uses `qwen2.5-coder:7b` through Ollama on your Mac. It needs no NVIDIA or
-OpenAI API key, has no per-message provider charge, and keeps project content
-on this computer. You can choose another installed model in `.env`:
+Without an NVIDIA key, the automatic route uses `qwen2.5-coder:7b` through
+Ollama on your Mac. It needs no provider key and keeps project content on this
+computer. You can choose another installed local model in `.env`:
 
 ```dotenv
 OLLAMA_MODEL=qwen2.5-coder:7b
 ```
 
-To add the free local Gemma 4 E2B route for general chat and reasoning,
-download it separately. The model supports multimodal workloads, but the
-current dashboard sends text tasks only:
+### Automatic NVIDIA route
 
-```bash
-npm run setup:gemma
-```
-
-Then select **Gemma** in the dashboard. It falls back to Qwen Coder if Gemma is
-not available. The default remains Qwen because it is better suited to editing
-and building projects.
-
-Choose `AGENT_MODEL_MODE=smart` for important changes where quality matters
-more than speed. Smart mode creates a compact implementation brief and
-independently reviews the final result before it is reported. It makes
-additional local model requests, so it is slower than Auto.
-
-Choose `AGENT_MODEL_MODE=build` when you want a stronger project-building
-workflow. Build mode produces a compact project brief and independently reviews
-the delivered result. It is best for a new application, website, dashboard, or
-tool.
-
-An optional remote OpenAI-compatible provider can be configured with
-`AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY`, and `AGENT_MODEL`. Select
-**Remote** in either Chat or Projects only when you want to use it. If it
-temporarily fails, the agent falls back to your local Ollama model.
-
-When the dashboard is hosted (for example, on Railway), Auto cannot reach an
-Ollama server running on your Mac. Choose **Remote** with a hosted
-OpenAI-compatible provider, choose **Nemotron 3 Ultra · NVIDIA**, or configure
-`OLLAMA_BASE_URL` and `OLLAMA_API_KEY` for a secured remote Ollama service.
-Do not expose an unauthenticated Ollama endpoint to the public internet.
-
-### Muse Glimmer Power Build route
-
-If your NVIDIA API Catalog account provides Muse Glimmer 30B, set its exact
-catalog model ID and your private key in `.env`:
+Add your private NVIDIA key to use Nemotron 3 Ultra automatically for Chat and
+Projects. If NVIDIA is temporarily unavailable, the agent falls back to local
+Qwen Coder. No per-task model selector is required.
 
 ```dotenv
 NVIDIA_API_KEY=your_nvidia_api_key
-NVIDIA_MUSE_MODEL=meta/muse-glimmer-30b
-NVIDIA_MUSE_BASE_URL=https://integrate.api.nvidia.com/v1
 ```
-
-Choose **Power Build · Muse Glimmer 30B** for demanding multimodal coding and
-reasoning work. The route is optional: transient NVIDIA errors automatically
-fall back to local Qwen Coder. It is not a free unlimited production service;
-keep Qwen as your private no-cost baseline. If `NVIDIA_MUSE_MODEL` is omitted,
-the same current NVIDIA catalog ID is selected automatically whenever
-`NVIDIA_API_KEY` is present.
-
-### Nemotron 3 Ultra route
-
-Choose **Nemotron 3 Ultra · NVIDIA** in either Chat or Projects for NVIDIA's
-hosted agentic reasoning and coding model. It uses the same private
-`NVIDIA_API_KEY` and automatically falls back to local Qwen Coder when NVIDIA
-is temporarily unavailable.
 
 The default NVIDIA catalog model ID is
 `nvidia/nemotron-3-ultra-550b-a55b`. You can override the model or endpoint:
@@ -178,15 +130,11 @@ Start the local browser workspace:
 npm run ui
 ```
 
-Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the same local Ollama model and project workspace as the command-line agent, shows live tool activity, and keeps the selected project active between tasks. Auto uses Qwen Coder locally. Select **Smart** for a deeper planning and independent-review pass; your selected model mode is kept in this browser for later dashboard visits, and its saved project handoff appears in the Workspace panel after an approved task. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
+Then open [http://127.0.0.1:3333](http://127.0.0.1:3333). It uses the automatic NVIDIA route when configured, otherwise local Ollama, and keeps the selected project active between tasks. The UI listens only on your computer; use `AGENT_UI_PORT` to choose another local port. Use **Cancel task** to stop a model request or command in progress; completed file changes are intentionally kept.
 
 The dashboard separates **Chat** from **Projects**. Chat is for questions and
 ideas and cannot inspect or alter project files. Projects is where the agent
-creates, analyzes, edits, tests, previews, and delivers code. Select **Build**
-in the Projects model route or use a Build quick starter for a stronger
-plan-and-review project workflow. For change-sensitive work, enable **Review
-plan before changes**. The agent produces a no-tools plan first; source edits
-begin only after you click **Approve & implement**.
+creates, analyzes, edits, tests, previews, and delivers code.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 
@@ -228,9 +176,8 @@ database, or environment variables should be deployed as their own service.
 dependencies, Git data, environment files, symlinks, and common credential/key
 files. Do not hard-code credentials in ordinary source files.
 
-The dashboard also checks whether its configured model routes are currently
-available. A status-check problem does not expose your key or prevent a task
-from using its normal retry and fallback behavior.
+The agent automatically retries transient model failures and uses the local
+fallback when the configured NVIDIA route is unavailable.
 
 ### Research, browser checks, and project commands
 
