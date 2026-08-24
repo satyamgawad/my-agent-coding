@@ -29,6 +29,34 @@ test("task timeout settings stay within a safe, predictable range", () => {
     assert.equal(resolveTaskTimeout("not-a-number"), DEFAULT_TASK_TIMEOUT_MS);
 });
 
+test("a hosted dashboard explains why a local Ollama route cannot connect", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({ agentRoot: root, allowProjectPreviews: false });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Hello", purpose: "chat", mode: "auto" }),
+    });
+
+    assert.equal(task.status, 400);
+    assert.match((await task.json()).error, /cannot reach Ollama running on your Mac/);
+
+    const evaluation = await fetch(`${baseUrl}/api/evaluations/run`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "live", modelMode: "auto" }),
+    });
+    assert.equal(evaluation.status, 400);
+    assert.match((await evaluation.json()).error, /cannot reach Ollama running on your Mac/);
+});
+
 test("the dashboard ends a stalled model task at its configured deadline", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const server = createUiServer({
@@ -493,7 +521,7 @@ test("the dashboard exposes and runs isolated agent baseline evaluations", async
     assert.deepEqual(await idle.json(), {
         state: "idle",
         mode: "deterministic",
-        total: 3,
+        total: 4,
         passed: 0,
         passRate: null,
         completedAt: null,
@@ -510,7 +538,7 @@ test("the dashboard exposes and runs isolated agent baseline evaluations", async
 
     assert.equal(run.status, 200);
     assert.equal(result.state, "complete");
-    assert.equal(result.passed, 3);
+    assert.equal(result.passed, 4);
     assert.equal(result.passRate, 100);
     assert.equal(result.results.every((item) => item.status === "pass"), true);
     assert.equal(result.results.every((item) => item.modelRoute === "deterministic fixture"), true);
@@ -983,6 +1011,9 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     assert.match(page, /value="gemma">Gemma · local reasoning/);
     assert.match(page, /value="power">Power Build · Muse Glimmer 30B/);
     assert.match(page, /id="chat-model-mode"/);
+    assert.match(page, /value="custom">Remote · custom endpoint/);
+    assert.match(page, /id="plan-review"/);
+    assert.match(page, /id="approve-plan"/);
     assert.match(page, /value="ultra">Nemotron 3 Ultra · NVIDIA/);
     assert.match(page, /data-build-prompt/);
     assert.match(script, /modelNotes\.build/);
@@ -992,6 +1023,8 @@ test("the dashboard exposes a build-focused project mode and quick starters", ()
     assert.match(script, /ultra: "Use NVIDIA Nemotron 3 Ultra/);
     assert.match(script, /purpose === "chat" \? chatModelMode\.value : modelMode\.value/);
     assert.match(script, /CHAT_MODEL_MODE_STORAGE_KEY/);
+    assert.match(script, /planOnly/);
+    assert.match(script, /approvePlanButton\.addEventListener/);
 });
 
 test("the dashboard guides a generic project request into a requirements brief", () => {

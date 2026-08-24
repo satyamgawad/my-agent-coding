@@ -159,6 +159,11 @@ textarea:focus-visible { box-shadow: 0 2px 0 var(--acid); }
 .model-options #model-note, .model-options .model-health { grid-column: 1; max-width: none; }
 .model-options select { grid-column: 2; grid-row: 1 / span 2; }
 .result-meta { margin: 14px 0 0; color: #858d83; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.plan-review-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; cursor: pointer; }
+.plan-review-toggle input { accent-color: var(--aqua); }
+.plan-review-toggle input:disabled { cursor: wait; }
+.approve-plan-button { margin-top: 15px; border: 1px solid rgba(216, 252, 106, .5); border-radius: 8px; padding: 8px 11px; color: var(--acid); background: rgba(216, 252, 106, .08); font-size: 11px; font-weight: 800; }
+.approve-plan-button:hover, .approve-plan-button:focus-visible { border-color: var(--acid); background: rgba(216, 252, 106, .16); outline: none; }
 
 .suggestions { display: flex; flex-wrap: wrap; gap: 7px; }
 .suggestions button {

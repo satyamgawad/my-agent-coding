@@ -23,6 +23,7 @@ const MAX_REQUEST_BYTES = 16 * 1024;
 const SSE_HEARTBEAT_INTERVAL_MS = 15 * 1_000;
 const REMOTE_PASSWORD_MIN_LENGTH = 16;
 const DASHBOARD_USERNAME = "agent";
+const LOCAL_OLLAMA_MODES = new Set(["auto", "build", "smart", "local", "gemma"]);
 const STATIC_ASSETS = new Map([
     ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
     ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
@@ -201,6 +202,16 @@ function isLoopbackHost(host) {
     return ["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"].includes(
         String(host).trim().toLowerCase()
     );
+}
+
+function usesLocalOllamaEndpoint(environment = process.env) {
+    const baseUrl = environment.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1";
+
+    return /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/v1\/?$/i.test(baseUrl);
+}
+
+function hostedLocalModelError() {
+    return "This hosted dashboard cannot reach Ollama running on your Mac. Choose Remote with a hosted OpenAI-compatible model, choose NVIDIA Ultra, or configure a secured remote OLLAMA_BASE_URL.";
 }
 
 function projectPreviewUnavailable() {
@@ -572,6 +583,12 @@ export function createUiServer({
                 return;
             }
 
+            if (evaluationMode === "live" && !allowProjectPreviews &&
+                LOCAL_OLLAMA_MODES.has(modelMode) && usesLocalOllamaEndpoint()) {
+                responseJson(response, 400, { error: hostedLocalModelError() });
+                return;
+            }
+
             if (evaluationMode === "live" && activeTask) {
                 responseJson(response, 409, {
                     error: "Wait for the active task to finish before running a live model evaluation.",
@@ -812,6 +829,7 @@ export function createUiServer({
             const mode = typeof body?.mode === "string" ? body.mode : "auto";
             const purpose = typeof body?.purpose === "string" ? body.purpose : "project";
             const safetyEnabled = body?.safety === true;
+            const planOnly = body?.planOnly === true;
 
             if (!task) {
                 responseJson(response, 400, { error: "Describe a task before running it." });
@@ -828,6 +846,16 @@ export function createUiServer({
 
             if (!new Set(["chat", "project"]).has(purpose)) {
                 responseJson(response, 400, { error: "Choose a supported workspace." });
+                return;
+            }
+
+            if (planOnly && purpose !== "project") {
+                responseJson(response, 400, { error: "Plan review is available only for project tasks." });
+                return;
+            }
+
+            if (!allowProjectPreviews && LOCAL_OLLAMA_MODES.has(mode) && usesLocalOllamaEndpoint()) {
+                responseJson(response, 400, { error: hostedLocalModelError() });
                 return;
             }
 
@@ -914,6 +942,7 @@ export function createUiServer({
                         signal: taskRecord.controller.signal,
                         sessionContext: projectSession.recent(conversationId),
                         purpose,
+                        planOnly,
                     });
                     taskResult = result;
                     taskSucceeded = !isTaskFailure(result);
@@ -947,6 +976,7 @@ export function createUiServer({
                     timedOut: taskRecord.timedOut,
                     durationMs: Date.now() - taskRecord.startedAt,
                     steps: taskRecord.steps || 0,
+                    planOnly,
                 });
             } catch (error) {
                 taskResult = `❌ The agent could not complete this task: ${error.message || String(error)}`;
@@ -958,6 +988,7 @@ export function createUiServer({
                     timedOut: taskRecord.timedOut,
                     durationMs: Date.now() - taskRecord.startedAt,
                     steps: taskRecord.steps || 0,
+                    planOnly,
                 });
             } finally {
                 clearTimeout(taskTimeout);

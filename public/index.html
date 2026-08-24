@@ -74,6 +74,7 @@
                 <select id="chat-model-mode" name="chat-mode" disabled>
                   <option value="auto" selected>Auto · Qwen Coder</option>
                   <option value="ultra">Nemotron 3 Ultra · NVIDIA</option>
+                  <option value="custom">Remote · custom endpoint</option>
                 </select>
               </div>
               <div class="suggestions" aria-label="Chat suggestions">
@@ -178,6 +179,10 @@
 
           <div class="task-footer">
             <p id="project-task-hint">After a task completes, send a follow-up instruction for the active project.</p>
+            <label class="plan-review-toggle" for="plan-review">
+              <input id="plan-review" type="checkbox">
+              <span>Review plan before changes</span>
+            </label>
             <span class="task-count" id="project-task-count" aria-live="polite">0 / 16,000</span>
             <div class="task-actions">
               <button class="cancel-button" id="cancel-button" type="button" hidden>Cancel task</button>
@@ -307,6 +312,7 @@
           </div>
           <div class="result-text" id="result-text" aria-live="polite">Describe a task above to start a focused agent run.</div>
           <p class="result-meta" id="result-meta" hidden></p>
+          <button class="approve-plan-button" id="approve-plan" type="button" hidden>Approve &amp; implement</button>
         </article>
       </section>
 

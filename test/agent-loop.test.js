@@ -57,6 +57,24 @@ test("a generic project request gathers requirements before the agent creates fi
     assert.match(result, /Once you reply, I will create the project/);
 });
 
+test("plan review returns an implementation outline without changing a project", async (t) => {
+    const { agent, prompts, tools } = createAgent(t, [{
+        content: [
+            "Goal: add project sharing.",
+            "Proposed changes: inspect the current data flow, add the smallest share action, and preserve existing behavior.",
+            "Verification: add a behavior test and run the project checks.",
+            "Risks or open questions: confirm the intended sharing audience.",
+        ].join("\n"),
+    }]);
+
+    const result = await agent.run("Add sharing to the active project.", { planOnly: true });
+
+    assert.match(result, /Goal: add project sharing/);
+    assert.match(prompts[0], /plan-only pass/);
+    assert.match(prompts[0], /do not call tools, inspect files, create files, run commands/);
+    assert.deepEqual(tools.listProjects.execute({}), []);
+});
+
 test("general Chat can research public web sources without accessing a project", async (t) => {
     const prompts = [];
     const { workspaceManager, tools } = createTestWorkspace(t);

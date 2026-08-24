@@ -16,6 +16,14 @@ const EXTRA_NPM_SCRIPTS = new Set([
     "test:unit",
     "test:e2e",
 ]);
+export const EXECUTION_MODES = new Set(["host", "docker"]);
+export const DEFAULT_EXECUTION_MODE = "host";
+const DEFAULT_DOCKER_IMAGE = "node:22-alpine";
+
+export function resolveExecutionMode(value = process.env.AGENT_EXECUTION_MODE) {
+    const mode = typeof value === "string" ? value.trim().toLowerCase() : "";
+    return EXECUTION_MODES.has(mode) ? mode : DEFAULT_EXECUTION_MODE;
+}
 
 function terminalError(message, code = "UNSAFE_COMMAND") {
     const error = new Error(message);
@@ -121,17 +129,59 @@ function commandEnvironment() {
     };
 }
 
-export function createTerminalTool(workspaceManager) {
+function runsProjectCode(command) {
+    if (command.file === "node") return true;
+    if (command.file !== "npm") return false;
+
+    return command.arguments[0] !== "install";
+}
+
+export function dockerCommandSpec(command, workspace, environment = process.env) {
+    const image = typeof environment.AGENT_SANDBOX_IMAGE === "string" && environment.AGENT_SANDBOX_IMAGE.trim()
+        ? environment.AGENT_SANDBOX_IMAGE.trim()
+        : DEFAULT_DOCKER_IMAGE;
+
+    return {
+        file: "docker",
+        arguments: [
+            "run",
+            "--rm",
+            "--network", "none",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "--pids-limit", "128",
+            "--memory", "1g",
+            "--cpus", "1.5",
+            "--mount", `type=bind,src=${workspace},dst=/workspace,rw`,
+            "--workdir", "/workspace",
+            "--env", "HOME=/tmp",
+            "--env", "NODE_ENV=test",
+            image,
+            command.file,
+            ...command.arguments,
+        ],
+    };
+}
+
+export function createTerminalTool(workspaceManager, {
+    executionMode = resolveExecutionMode(),
+    runCommand = execFileAsync,
+} = {}) {
     const sandbox = createSandbox(() => workspaceManager.getActiveWorkspace());
 
     return async function runTerminal({ command }, { signal } = {}) {
         const selectedCommand = commandSpec(command, sandbox);
+        const executableCommand = executionMode === "docker" && runsProjectCode(selectedCommand)
+            ? dockerCommandSpec(selectedCommand, sandbox.workspace())
+            : selectedCommand;
         const environment = commandEnvironment();
 
         try {
-            const { stdout, stderr } = await execFileAsync(
-                selectedCommand.file,
-                selectedCommand.arguments,
+            const { stdout, stderr } = await runCommand(
+                executableCommand.file,
+                executableCommand.arguments,
                 {
                     cwd: sandbox.workspace(),
                     maxBuffer: 1024 * 1024,

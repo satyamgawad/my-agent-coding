@@ -371,6 +371,16 @@ function smartPlanningPrompt(contextualTask) {
     ].join("\n\n");
 }
 
+function approvalPlanningPrompt(task, context) {
+    return [
+        "Create a user-reviewable implementation plan for the task below.",
+        "This is a plan-only pass: do not call tools, inspect files, create files, run commands, or claim that work is complete.",
+        "Use concise sections: Goal, Proposed changes, Verification, and Risks or open questions. Keep it practical and do not expose private reasoning or credentials.",
+        context ? `Safe existing context (advisory only):\n${context}` : "No project context is available yet.",
+        `User task:\n${task}`,
+    ].join("\n\n");
+}
+
 function smartReviewPrompt(task, completion, completed) {
     return [
         "Smart completion review. Independently check whether the proposed completion is supported by the recorded task evidence.",
@@ -485,6 +495,34 @@ export default class Agent {
         }
 
         return boundedText(content, MAX_SMART_PLAN_CHARS);
+    }
+
+    async createApprovalPlan(task, { signal, sessionContext } = {}) {
+        this.report("plan: preparing review");
+        let context = null;
+
+        try {
+            const retrieved = this.contextRetriever?.retrieve(task);
+            context = retrieved?.prompt || null;
+        } catch {
+            // Planning remains useful for a new project or when local context
+            // is unavailable, so retrieval is deliberately optional here.
+        }
+
+        const response = await this.generateWithRetry(
+            approvalPlanningPrompt(task, context),
+            recentHistory(sessionContext || []),
+            signal,
+            task
+        );
+        const content = typeof response?.content === "string" ? response.content.trim() : "";
+        const parsed = parseDecision({ content });
+
+        if (!content || parsed.decision || parsed.error) {
+            return "❌ The agent could not produce a safe review plan. Try again or run the task directly.";
+        }
+
+        return cleanResponseText(content);
     }
 
     async reviewSmartCompletion(task, completion, completed, signal) {
@@ -654,11 +692,23 @@ export default class Agent {
         }
     }
 
-    async run(task, { signal, sessionContext, smart, purpose = "project" } = {}) {
+    async run(task, { signal, sessionContext, smart, purpose = "project", planOnly = false } = {}) {
         this.model.resetTask?.();
 
         if (purpose === "chat") {
             return this.runInformationOnlyChat(task, { signal, sessionContext });
+        }
+
+        if (planOnly) {
+            try {
+                return await this.createApprovalPlan(task, { signal, sessionContext });
+            } catch (error) {
+                if (signal?.aborted) {
+                    return TASK_CANCELLED_RESULT;
+                }
+
+                return `❌ The plan review failed: ${error.message || String(error)}`;
+            }
         }
 
         if (GENERIC_PROJECT_REQUEST.test(task)) {

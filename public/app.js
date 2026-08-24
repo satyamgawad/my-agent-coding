@@ -18,6 +18,7 @@ const clearChatButton = document.querySelector("#clear-chat");
 const safetyGuard = document.querySelector("#safety-guard");
 const chatModelMode = document.querySelector("#chat-model-mode");
 const modelMode = document.querySelector("#model-mode");
+const planReview = document.querySelector("#plan-review");
 const modelNote = document.querySelector("#model-note");
 const modelSelection = document.querySelector("#model-selection");
 const modelHealth = document.querySelector("#model-health");
@@ -65,6 +66,7 @@ const resultTitle = document.querySelector("#result-title");
 const resultText = document.querySelector("#result-text");
 const resultMark = document.querySelector("#result-mark");
 const resultMeta = document.querySelector("#result-meta");
+const approvePlanButton = document.querySelector("#approve-plan");
 const cosmicBackdrop = document.querySelector(".cosmic-backdrop");
 
 const toolLabels = {
@@ -167,6 +169,7 @@ let taskStatusKnown = false;
 let recoveringActiveTask = false;
 let activeTaskPoll = null;
 let staticPreviewRequest = 0;
+let pendingPlanTask = null;
 
 const ACTIVE_TASK_POLL_INTERVAL_MS = 2_500;
 const STATIC_PREVIEW_STATUS_PATHS = ["/api/projects/preview", "/api/projects/preview/status"];
@@ -325,7 +328,7 @@ function saveModelModePreference(mode) {
 function restoreChatModelModePreference() {
   try {
     const savedMode = window.localStorage.getItem(CHAT_MODEL_MODE_STORAGE_KEY);
-    if (["auto", "ultra"].includes(savedMode)) {
+    if (["auto", "ultra", "custom"].includes(savedMode)) {
       chatModelMode.value = savedMode;
     }
   } catch {
@@ -400,6 +403,7 @@ function setRunning(isRunning) {
   safetyGuard.disabled = taskControlsDisabled;
   chatModelMode.disabled = taskControlsDisabled;
   modelMode.disabled = taskControlsDisabled;
+  planReview.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
@@ -470,6 +474,7 @@ function showRecoveredTask(status, { announce = false, replaceActivity = false }
   resultTitle.textContent = status.state === "cancelling" ? "Cancelling task" : "Agent is working";
   resultMark.textContent = "…";
   resultText.textContent = "This task began before this dashboard connection. Its live trace cannot be replayed, but it is still running and can be cancelled.";
+  approvePlanButton.hidden = true;
   resultCard.classList.remove("is-success", "is-error");
 
   if (shouldAnnounce) {
@@ -679,6 +684,8 @@ function showResult(text, ok, metadata = {}) {
   resultMark.textContent = awaitingRequirements ? "01" : timedOut ? "⌛" : ok ? "✦" : "!";
   renderAnswerText(resultText, text);
   renderResultMeta(metadata);
+  const awaitingApproval = metadata.planOnly === true && ok && !metadata.cancelled;
+  approvePlanButton.hidden = !awaitingApproval || !pendingPlanTask;
   if (activeTaskPurpose !== "chat") setRequirementsGuide(awaitingRequirements);
   if (!awaitingRequirements) {
     showToast(timedOut ? "Task timed out — completed changes were kept." : ok ? "Task complete — verified result is ready." : "Task needs attention — review the result.", ok ? "success" : "error");
@@ -1702,6 +1709,7 @@ async function readEventStream(response) {
       if (eventName === "model") handleModelRoute(parsed);
       if (eventName === "result") {
         receivedResult = true;
+        if (parsed.planOnly && parsed.ok) pendingPlanTask = pendingPlanTask || activePlanTask;
         showResult(parsed.result, parsed.ok, parsed);
         if (parsed.cancelled) {
           resultTitle.textContent = parsed.timedOut ? "Task timed out" : "Task cancelled";
@@ -1722,19 +1730,26 @@ async function readEventStream(response) {
   return receivedResult;
 }
 
-async function runTask(task, purpose = "project") {
+let activePlanTask = null;
+
+async function runTask(task, purpose = "project", { planOnly = false } = {}) {
   activeTaskId = null;
   activeTaskPurpose = purpose;
+  activePlanTask = planOnly ? task : null;
+  if (planOnly) pendingPlanTask = null;
   let taskStarted = false;
   let recoveredTask = false;
   setRunning(true);
   clearActivity();
-  addActivity(purpose === "chat" ? "Chat message sent" : "Project task submitted", task, "user");
+  addActivity(purpose === "chat" ? "Chat message sent" : planOnly ? "Plan review requested" : "Project task submitted", task, "user");
   resultTitle.textContent = "Agent is working";
   resultMark.textContent = "…";
   resultText.textContent = purpose === "chat"
     ? "Preparing a project-safe answer."
-    : "Following the task, checking changes, and waiting to verify the result.";
+    : planOnly
+      ? "Preparing a review plan. No project files will be changed."
+      : "Following the task, checking changes, and waiting to verify the result.";
+  approvePlanButton.hidden = true;
   resultCard.classList.remove("is-success", "is-error", "is-requirements");
   if (purpose === "project") setRequirementsGuide(false);
 
@@ -1742,7 +1757,7 @@ async function runTask(task, purpose = "project") {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: purpose === "chat" ? chatModelMode.value : modelMode.value, purpose, safety: safetyGuard.checked }),
+      body: JSON.stringify({ task, mode: purpose === "chat" ? chatModelMode.value : modelMode.value, purpose, planOnly, safety: safetyGuard.checked }),
     });
 
     if (!response.ok) {
@@ -1830,7 +1845,7 @@ projectTaskForm.addEventListener("submit", (event) => {
     projectTaskHint.textContent = "Add a short project task description to begin.";
     return;
   }
-  runTask(task, "project");
+  runTask(task, "project", { planOnly: planReview.checked });
 });
 
 chatForm.addEventListener("submit", (event) => {
@@ -1866,6 +1881,13 @@ modelMode.addEventListener("change", () => {
 });
 
 chatModelMode.addEventListener("change", saveChatModelModePreference);
+
+approvePlanButton.addEventListener("click", () => {
+  if (!pendingPlanTask || activeTaskId) return;
+  const task = pendingPlanTask;
+  pendingPlanTask = null;
+  runTask(task, "project");
+});
 
 safetyGuard.addEventListener("change", saveSafetyGuardPreference);
 

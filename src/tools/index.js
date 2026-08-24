@@ -120,7 +120,7 @@ export const TOOL_DEFINITIONS = {
     },
 };
 
-export function createTools(workspaceManager, { learningMemory, webTools } = {}) {
+export function createTools(workspaceManager, { learningMemory, webTools, executionMode } = {}) {
     const files = createFileTools(workspaceManager);
     const projects = createProjectTools(workspaceManager);
     const memory = learningMemory ?? new LearningMemory({ workspaceManager });
@@ -179,11 +179,11 @@ export function createTools(workspaceManager, { learningMemory, webTools } = {})
         },
         terminal: {
             description: TOOL_DEFINITIONS.terminal.description,
-            execute: createTerminalTool(workspaceManager),
+            execute: createTerminalTool(workspaceManager, { executionMode }),
         },
         test: {
             description: TOOL_DEFINITIONS.test.description,
-            execute: createTestTool(workspaceManager),
+            execute: createTestTool(workspaceManager, { executionMode }),
         },
         rememberLesson: {
             description: TOOL_DEFINITIONS.rememberLesson.description,

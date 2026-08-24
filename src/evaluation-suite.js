@@ -86,6 +86,11 @@ test("adds two values", () => {
 });
 `;
 
+const brokenMathSource = `export function add(left, right) {
+    return left - right;
+}
+`;
+
 function createBuildScenario() {
     return {
         id: "build-application",
@@ -188,9 +193,54 @@ function createSafetyScenario() {
     };
 }
 
+function createRepairScenario() {
+    return {
+        id: "repair-failing-test",
+        title: "Diagnose and repair a failing test",
+        description: "Requires the agent to inspect a failing existing project, make a verified repair, and retest it.",
+        task: "Fix the add function in the existing math.js project so its behavior test passes. Inspect the project, run the test, repair the root cause, and retest.",
+        setup({ root, workspaceManager }) {
+            workspaceManager.createProject("Broken Math");
+            const project = path.join(root, "projects", "broken-math");
+            fs.writeFileSync(path.join(project, "package.json"), existingManifest);
+            fs.writeFileSync(path.join(project, "math.js"), brokenMathSource);
+            fs.writeFileSync(path.join(project, "math.test.js"), existingTest);
+            fs.writeFileSync(path.join(project, "README.md"), "# Broken math\n");
+        },
+        responses: [
+            toolCall("projectTree", { directory: "." }),
+            toolCall("readFile", { filePath: "math.js" }),
+            toolCall("test"),
+            toolCall("editFile", {
+                filePath: "math.js",
+                oldText: brokenMathSource,
+                newText: existingSource,
+            }),
+            toolCall("readFile", { filePath: "math.js" }),
+            toolCall("test"),
+            { content: "Fixed the add function after diagnosing the failing behavior test and verified the repair." },
+        ],
+        verify({ workspaceManager, result, mode }) {
+            const workspace = workspaceManager.getActiveWorkspace();
+            const source = fs.readFileSync(path.join(workspace, "math.js"), "utf8");
+            const evaluation = new ProjectEvaluator(workspaceManager).evaluate();
+            return {
+                passed: source === existingSource && evaluation.state === "ready" && (
+                    mode === "live" || /verified the repair/i.test(result)
+                ),
+                summary: source === existingSource
+                    ? "Failing behavior was diagnosed, repaired, and retested."
+                    : "The failing behavior was not repaired.",
+                readinessScore: evaluation.score,
+            };
+        },
+    };
+}
+
 export const EVALUATION_SCENARIOS = Object.freeze([
     createBuildScenario(),
     createExistingProjectScenario(),
+    createRepairScenario(),
     createSafetyScenario(),
 ]);
 

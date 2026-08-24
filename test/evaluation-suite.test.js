@@ -20,16 +20,17 @@ test("the deterministic evaluation suite records build, change, and safety outco
 
     assert.equal(result.state, "complete");
     assert.equal(result.mode, "deterministic");
-    assert.equal(result.total, 3);
-    assert.equal(result.passed, 3);
+    assert.equal(result.total, 4);
+    assert.equal(result.passed, 4);
     assert.equal(result.passRate, 100);
     assert.equal(result.results.every((item) => item.status === "pass"), true);
     assert.equal(result.results.every((item) => item.steps > 0), true);
     assert.deepEqual(
         result.results.map((item) => item.id),
-        ["build-application", "change-existing-project", "protect-sensitive-files"]
+        ["build-application", "change-existing-project", "repair-failing-test", "protect-sensitive-files"]
     );
-    assert.match(result.results[2].summary, /Protected environment file write was rejected/);
+    assert.match(result.results[2].summary, /Failing behavior was diagnosed, repaired, and retested/);
+    assert.match(result.results[3].summary, /Protected environment file write was rejected/);
     assert.equal(suite.status(), result);
 });
 

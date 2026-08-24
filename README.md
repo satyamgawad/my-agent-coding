@@ -69,8 +69,14 @@ tool.
 
 An optional remote OpenAI-compatible provider can be configured with
 `AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY`, and `AGENT_MODEL`. Select
-**Remote** in the dashboard only when you want to use it. If it temporarily
-fails, the agent falls back to your local Ollama model.
+**Remote** in either Chat or Projects only when you want to use it. If it
+temporarily fails, the agent falls back to your local Ollama model.
+
+When the dashboard is hosted (for example, on Railway), Auto cannot reach an
+Ollama server running on your Mac. Choose **Remote** with a hosted
+OpenAI-compatible provider, choose **Nemotron 3 Ultra · NVIDIA**, or configure
+`OLLAMA_BASE_URL` and `OLLAMA_API_KEY` for a secured remote Ollama service.
+Do not expose an unauthenticated Ollama endpoint to the public internet.
 
 ### Muse Glimmer Power Build route
 
@@ -135,6 +141,26 @@ cannot leave the dashboard working indefinitely. Completed changes are kept.
 Set `AGENT_TASK_TIMEOUT_MS` to a value from 30,000 to 3,600,000 milliseconds
 when a task needs a different limit.
 
+### Optional Docker execution sandbox
+
+By default, project checks run locally with a stripped environment. If Docker
+Desktop is installed, set `AGENT_EXECUTION_MODE=docker` to run project tests,
+builds, and focused Node checks in an isolated Node container instead. The
+container has no network, drops Linux capabilities, uses a read-only root,
+applies CPU/memory/process limits, and mounts only the active project. Package
+installation remains local with lifecycle scripts disabled so dependencies can
+be fetched deliberately before sandboxed checks run.
+
+```dotenv
+AGENT_EXECUTION_MODE=docker
+```
+
+Pull the default image once before using this mode:
+
+```bash
+docker pull node:22-alpine
+```
+
 Keep `.env` private. It is ignored by Git and unavailable to the agent's tools.
 
 For a private hosted Docker deployment, also add a long, unique
@@ -158,7 +184,9 @@ The dashboard separates **Chat** from **Projects**. Chat is for questions and
 ideas and cannot inspect or alter project files. Projects is where the agent
 creates, analyzes, edits, tests, previews, and delivers code. Select **Build**
 in the Projects model route or use a Build quick starter for a stronger
-plan-and-review project workflow.
+plan-and-review project workflow. For change-sensitive work, enable **Review
+plan before changes**. The agent produces a no-tools plan first; source edits
+begin only after you click **Approve & implement**.
 
 The Workspace panel includes **Run project** for the active app. It starts a local preview on an unused port and provides an **Open** button. For safety, previews support projects whose `package.json` start script uses the form `node server.js`; the preview does not receive the agent's API key or other environment variables.
 
@@ -479,14 +507,15 @@ There is no terminal working-directory argument, shell operators, redirection, o
 - Each agent run has a 30-step limit. If it reaches the limit, it reports what it completed rather than claiming success.
 - Agent-source tools are unavailable unless the user explicitly asks for self-improvement, and they cannot edit the safety-critical boundaries listed above.
 
-The terminal allowlist removes shell injection and caller-controlled directories, but this is not a kernel-level security sandbox: npm scripts and build tools execute project code. Use generated projects and dependencies you trust; do not treat this as a safe runner for hostile code.
+The terminal allowlist removes shell injection and caller-controlled directories. By default, npm scripts and build tools still execute project code on the host, so use generated projects and dependencies you trust. Set `AGENT_EXECUTION_MODE=docker` to run test/build/node checks inside the documented network-disabled Docker boundary; it is the recommended setting when generated code is less trusted.
 
 Generated-project commands run with a minimal temporary environment, so they do
 not inherit the agent's provider, GitHub, or dashboard secrets. The production
 Docker image also makes the agent source read-only to the unprivileged runtime;
 use a development checkout for the explicit self-improvement workflow. These
-measures reduce credential and source-tampering risk, but they do not replace a
-separate sandboxed container or microVM for hostile project code.
+measures reduce credential and source-tampering risk. Docker mode adds a
+separate sandboxed container for checks, but a dedicated microVM remains the
+stronger choice for hostile or multi-tenant project code.
 
 ## Verification behavior
 
@@ -509,9 +538,13 @@ The suite covers file operations, exact editing, project isolation, protected pa
 5. Explain the project structure.
 6. Reject a request to read `../../.ssh/config`.
 
+GitHub Actions runs this same locked Node 22 test suite for pull requests and
+every push to `main`. Railway can use the passing `main` build as its
+deployment gate.
+
 ## Limitations
 
-- The agent depends on Ollama running locally and the selected model's ability to select tools correctly.
+- Local use depends on Ollama and the selected model's ability to select tools correctly. Hosted use needs a configured remote provider, NVIDIA route, or secured remote Ollama endpoint.
 - It supports one active generated project per interactive session; use `selectProject` to switch.
 - Only the listed terminal commands are available. Applications with other build systems may need support added deliberately.
-- It does not provide browser automation, visual checks, Git operations, package publishing, deployment, or an operating-system-level sandbox.
+- Docker execution mode is a strong project-code boundary, but it is not a replacement for a dedicated microVM or a multi-tenant code-execution service.
