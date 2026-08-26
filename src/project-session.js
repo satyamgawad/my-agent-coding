@@ -234,4 +234,49 @@ export default class ProjectSession {
 
         fs.rmSync(filePath);
     }
+
+    list(prefix) {
+        const safePrefix = safeProject(prefix);
+
+        if (!safePrefix) {
+            return [];
+        }
+
+        const directory = this.resolveDirectory();
+
+        if (!directory) {
+            return [];
+        }
+
+        const matchingPrefix = `${safePrefix}-`;
+
+        return fs.readdirSync(directory, { withFileTypes: true })
+            .filter((entry) => entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith(".json"))
+            .map((entry) => entry.name.slice(0, -".json".length))
+            .filter((id) => id === safePrefix || id.startsWith(matchingPrefix))
+            .filter((id) => safeProject(id))
+            .map((id) => {
+                try {
+                    const turns = this.recent(id);
+                    const lastTurn = turns.at(-1);
+
+                    if (!lastTurn) {
+                        return null;
+                    }
+
+                    return {
+                        id,
+                        turns: turns.length,
+                        task: lastTurn.task,
+                        completedAt: lastTurn.completedAt,
+                    };
+                } catch {
+                    // One malformed saved transcript must not hide the rest of
+                    // the private conversation list.
+                    return null;
+                }
+            })
+            .filter(Boolean)
+            .sort((left, right) => Date.parse(right.completedAt) - Date.parse(left.completedAt));
+    }
 }

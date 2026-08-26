@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#030407">
+    <meta name="description" content="A private, safety-conscious local workspace for chatting with and directing your coding agent.">
     <title>Satyam's Agent</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
@@ -23,11 +24,11 @@
       <header class="topbar relative z-10">
         <div class="brand" aria-label="My Coding Agent">
           <span class="brand-mark" aria-hidden="true">✦</span>
-          <span>Satyam's agent</span>
+          <span>Satyam's Agent</span>
         </div>
         <nav class="workspace-switcher" aria-label="Choose a workspace" role="tablist">
-          <button class="workspace-switch is-active" type="button" role="tab" data-workspace-switch="chat" aria-controls="chat-workspace" aria-selected="true">Chat</button>
-          <button class="workspace-switch" type="button" role="tab" data-workspace-switch="projects" aria-controls="projects-workspace" aria-selected="false">Projects</button>
+          <button class="workspace-switch is-active" id="chat-tab" type="button" role="tab" data-workspace-switch="chat" aria-controls="chat-workspace" aria-selected="true" tabindex="0">Chat</button>
+          <button class="workspace-switch" id="projects-tab" type="button" role="tab" data-workspace-switch="projects" aria-controls="projects-workspace" aria-selected="false" tabindex="-1">Projects</button>
         </nav>
         <label class="safety-toggle" title="Optionally check each request and answer with NVIDIA Safety Guard. NVIDIA is used only while this is enabled.">
           <input id="safety-guard" type="checkbox">
@@ -44,7 +45,7 @@
         </div>
       </header>
 
-      <section class="workspace-view is-active" id="chat-workspace" data-workspace-view="chat" role="tabpanel" aria-labelledby="chat-page-title">
+      <section class="workspace-view is-active" id="chat-workspace" data-workspace-view="chat" role="tabpanel" aria-labelledby="chat-tab">
         <section class="intro chat-intro">
           <p class="eyebrow">GENERAL CONVERSATION</p>
           <h1 id="chat-page-title"><span>Ask anything.</span><em>Keep projects separate.</em></h1>
@@ -52,11 +53,27 @@
         </section>
 
         <section class="chat-layout" aria-label="General chat workspace">
-          <section class="chat-card">
+          <aside class="chat-history-rail" aria-labelledby="chat-history-title">
+            <div class="chat-history-heading">
+              <div>
+                <p class="eyebrow">CHAT HISTORY</p>
+                <h2 id="chat-history-title">Your conversations</h2>
+              </div>
+              <button class="new-chat-button" id="new-chat" type="button" disabled><span aria-hidden="true">＋</span> New chat</button>
+            </div>
+            <p class="chat-history-summary" id="chat-history-summary" aria-live="polite">Loading saved chats…</p>
+            <ol class="chat-history-list" id="chat-history-list" aria-label="Saved general chats"></ol>
+            <div class="chat-history-footer">
+              <p>Chats are saved privately on this device. Start a new chat whenever you want a clean context.</p>
+              <button class="guide-project-link" type="button" data-workspace-switch="projects">Go to Projects <span aria-hidden="true">→</span></button>
+            </div>
+          </aside>
+
+          <section class="chat-card" aria-labelledby="chat-title">
             <div class="card-heading">
               <div>
                 <p class="eyebrow">CHAT</p>
-                <h2>A focused answer, without project changes</h2>
+                <h2 id="chat-title">A focused answer, without project changes</h2>
               </div>
               <div class="chat-heading-actions">
                 <span class="chat-safety">Project-safe</span>
@@ -69,7 +86,7 @@
 
             <form class="chat-composer" id="chat-form">
               <label class="sr-only" for="chat-input">Ask a question</label>
-              <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask a question, compare ideas, or search current information…" autofocus disabled></textarea>
+              <textarea id="chat-input" name="chat" rows="3" maxlength="16000" placeholder="Ask a question, compare ideas, or search current information…" aria-describedby="chat-hint" autofocus disabled></textarea>
               <div class="suggestions" aria-label="Chat suggestions">
                 <button type="button" data-chat-prompt="Explain this concept in simple words: ">Explain a concept</button>
                 <button type="button" data-chat-prompt="Help me compare these options: ">Compare options</button>
@@ -87,24 +104,10 @@
               </div>
             </form>
           </section>
-
-          <aside class="chat-guide" aria-label="About Chat">
-            <p class="eyebrow">TWO CLEAR SPACES</p>
-            <h2><span>Chat for thinking.</span><span>Projects for doing.</span></h2>
-            <p>Switch to Projects only when you want the agent to create, analyze, edit, test, or deliver work in a project.</p>
-            <div class="signal-constellation" aria-hidden="true">
-              <span class="constellation-ring"></span>
-              <span class="constellation-core"></span>
-              <span class="constellation-node node-one"></span>
-              <span class="constellation-node node-two"></span>
-              <span class="constellation-node node-three"></span>
-            </div>
-            <button class="guide-project-link" type="button" data-workspace-switch="projects">Go to Projects <span aria-hidden="true">→</span></button>
-          </aside>
         </section>
       </section>
 
-      <section class="workspace-view" id="projects-workspace" data-workspace-view="projects" role="tabpanel" aria-labelledby="page-title" hidden>
+      <section class="workspace-view" id="projects-workspace" data-workspace-view="projects" role="tabpanel" aria-labelledby="projects-tab" hidden>
       <section class="intro" aria-labelledby="page-title">
         <p class="eyebrow">PROJECT WORKSPACE</p>
         <h1 id="page-title"><span>Give it a task.</span><em>Build it. Make it better.</em></h1>
@@ -112,17 +115,30 @@
       </section>
 
       <section class="workbench" aria-label="Agent workspace">
+        <aside class="project-history-rail" aria-labelledby="project-history-title">
+          <div class="project-history-heading">
+            <div>
+              <p class="eyebrow">TASK HISTORY</p>
+              <h2 id="project-history-title">Project chats</h2>
+            </div>
+            <button class="new-project-chat-button" id="new-project-chat" type="button" disabled><span aria-hidden="true">＋</span> New task chat</button>
+          </div>
+          <p class="project-history-summary" id="project-history-summary" aria-live="polite">Loading saved task chats…</p>
+          <ol class="project-history-list" id="project-history-list" aria-label="Saved project task chats"></ol>
+          <p class="project-history-footer">Each task chat retains its own follow-up context. New chats start with a clean context for the selected project.</p>
+        </aside>
+
         <form class="task-card" id="project-task-form">
           <div class="card-heading">
             <div>
               <p class="eyebrow">NEW OR FOLLOW-UP</p>
               <h2>What should we change?</h2>
             </div>
-            <span class="shortcut">⌘ ↵</span>
+            <span class="shortcut" aria-label="Submit with Command or Control plus Enter">⌘/Ctrl ↵</span>
           </div>
 
           <label class="sr-only" for="project-task-input">Describe a project task</label>
-          <textarea id="project-task-input" name="task" rows="5" maxlength="16000" placeholder="Describe the app — or simply say “Create an app” and I’ll ask for your requirements." disabled></textarea>
+          <textarea id="project-task-input" name="task" rows="5" maxlength="16000" placeholder="Describe the app — or simply say “Create an app” and I’ll ask for your requirements." aria-describedby="project-task-hint project-task-count" disabled></textarea>
 
           <section class="requirements-guide" id="requirements-guide" aria-live="polite">
             <div class="requirements-guide-copy">
@@ -271,12 +287,12 @@
       <section class="conversation-card" aria-labelledby="conversation-title">
         <div class="card-heading compact">
           <div>
-            <p class="eyebrow">AGENT CONVERSATION</p>
+            <p class="eyebrow">PROJECT TASK CHAT</p>
             <h2 id="conversation-title">Continue where you left off</h2>
           </div>
           <div class="panel-actions">
             <button class="panel-toggle" type="button" data-panel-toggle="conversation-content" aria-expanded="true">Collapse</button>
-            <button class="conversation-clear" id="clear-conversation" type="button" disabled>Clear conversation</button>
+            <button class="conversation-clear" id="clear-conversation" type="button" disabled>Clear task chat</button>
           </div>
         </div>
         <div class="collapsible-content" id="conversation-content">

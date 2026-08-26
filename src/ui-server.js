@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -29,6 +29,8 @@ const STATIC_ASSETS = new Map([
 export const DEFAULT_TASK_TIMEOUT_MS = 15 * 60 * 1_000;
 const MIN_TASK_TIMEOUT_MS = 30 * 1_000;
 const MAX_TASK_TIMEOUT_MS = 60 * 60 * 1_000;
+const GENERAL_CHAT_THREAD_PATTERN = /^general-chat-[a-f0-9]{32}$/;
+const AGENT_THREAD_PATTERN = /^agent-chat-(?:[a-z0-9]+(?:-[a-z0-9]+)*)-[a-f0-9]{32}$/;
 
 export function resolveTaskTimeout(value = process.env.AGENT_TASK_TIMEOUT_MS) {
     const configured = Number(value);
@@ -68,6 +70,62 @@ function responseJson(response, status, body) {
         ...securityHeaders(),
     });
     response.end(JSON.stringify(body));
+}
+
+function isGeneralChatConversationId(value) {
+    return value === GENERAL_CHAT_CONVERSATION_ID ||
+        (typeof value === "string" && GENERAL_CHAT_THREAD_PATTERN.test(value));
+}
+
+function newGeneralChatConversationId() {
+    return `${GENERAL_CHAT_CONVERSATION_ID}-${randomUUID().replaceAll("-", "")}`;
+}
+
+function isAgentConversationId(value) {
+    return value === AGENT_CONVERSATION_ID ||
+        (typeof value === "string" && AGENT_THREAD_PATTERN.test(value));
+}
+
+function projectConversationScope(conversationId) {
+    if (conversationId === AGENT_CONVERSATION_ID) {
+        return null;
+    }
+
+    return conversationId.slice(`${AGENT_CONVERSATION_ID}-`.length, -33);
+}
+
+function isVisibleProjectConversation(conversationId, project) {
+    const scope = projectConversationScope(conversationId);
+    return scope === null || scope === "inbox" || scope === project;
+}
+
+function newProjectConversationId(project) {
+    const scope = typeof project === "string" && project ? project : "inbox";
+    return `${AGENT_CONVERSATION_ID}-${scope}-${randomUUID().replaceAll("-", "")}`;
+}
+
+function generalChatPayload(projectSession, conversationId) {
+    const turns = projectSession.recent(conversationId);
+    return {
+        state: "ready",
+        id: conversationId,
+        turns,
+        message: turns.length > 0
+            ? "Your general chat is ready to continue."
+            : "Start a conversation. Your chat is saved separately from every project.",
+    };
+}
+
+function projectConversationPayload(projectSession, conversationId) {
+    const turns = projectSession.recent(conversationId);
+    return {
+        state: "ready",
+        id: conversationId,
+        turns,
+        message: turns.length > 0
+            ? "Your project task chat is ready to continue."
+            : "Start a project task chat to keep a clean follow-up context.",
+    };
 }
 
 function responseProjectArtifactError(response, error) {
@@ -402,19 +460,56 @@ export function createUiServer({
             return;
         }
 
-        if (request.method === "GET" && url.pathname === "/api/chat/conversation") {
+        if (request.method === "GET" && url.pathname === "/api/chat/conversations") {
             try {
-                const turns = projectSession.recent(GENERAL_CHAT_CONVERSATION_ID);
                 responseJson(response, 200, {
                     state: "ready",
-                    turns,
-                    message: turns.length > 0
-                        ? "Your general chat is ready to continue."
-                        : "Start a conversation. Your chat is saved separately from every project.",
+                    chats: projectSession.list(GENERAL_CHAT_CONVERSATION_ID)
+                        .filter(({ id }) => isGeneralChatConversationId(id)),
+                    message: "Your saved general chats stay private on this device.",
                 });
             } catch {
                 responseJson(response, 200, {
                     state: "unavailable",
+                    chats: [],
+                    message: "Saved general chats are temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/chat/conversations") {
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active request to finish before starting a new chat.",
+                });
+                return;
+            }
+
+            responseJson(response, 201, {
+                state: "ready",
+                id: newGeneralChatConversationId(),
+                turns: [],
+                message: "New chat ready. Ask anything to begin.",
+            });
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/chat/conversation") {
+            const requestedConversationId = url.searchParams.get("id");
+            const conversationId = requestedConversationId || GENERAL_CHAT_CONVERSATION_ID;
+
+            if (!isGeneralChatConversationId(conversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved general chat." });
+                return;
+            }
+
+            try {
+                responseJson(response, 200, generalChatPayload(projectSession, conversationId));
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    id: conversationId,
                     turns: [],
                     message: "General chat history is temporarily unavailable.",
                 });
@@ -430,10 +525,19 @@ export function createUiServer({
                 return;
             }
 
+            const requestedConversationId = url.searchParams.get("id");
+            const conversationId = requestedConversationId || GENERAL_CHAT_CONVERSATION_ID;
+
+            if (!isGeneralChatConversationId(conversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved general chat." });
+                return;
+            }
+
             try {
-                projectSession.clear(GENERAL_CHAT_CONVERSATION_ID);
+                projectSession.clear(conversationId);
                 responseJson(response, 200, {
                     state: "cleared",
+                    id: conversationId,
                     turns: [],
                     message: "General chat cleared.",
                 });
@@ -445,19 +549,66 @@ export function createUiServer({
             return;
         }
 
-        if (request.method === "GET" && url.pathname === "/api/conversation") {
+        if (request.method === "GET" && url.pathname === "/api/project/conversations") {
+            const project = workspaceManager.getContext().project;
+
             try {
-                const turns = projectSession.recent(AGENT_CONVERSATION_ID);
                 responseJson(response, 200, {
                     state: "ready",
-                    turns,
-                    message: turns.length > 0
-                        ? "Saved agent conversation is available to follow-up tasks."
-                        : "Your tasks and final agent responses will appear here.",
+                    project,
+                    chats: projectSession.list(AGENT_CONVERSATION_ID)
+                        .filter(({ id }) => isAgentConversationId(id))
+                        .filter(({ id }) => isVisibleProjectConversation(id, project))
+                        .map((chat) => ({ ...chat, project: projectConversationScope(chat.id) })),
+                    message: project
+                        ? `Saved task chats for ${project} are ready to continue.`
+                        : "Saved project-planning chats are ready to continue.",
                 });
             } catch {
                 responseJson(response, 200, {
                     state: "unavailable",
+                    project,
+                    chats: [],
+                    message: "Saved project task chats are temporarily unavailable.",
+                });
+            }
+            return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/project/conversations") {
+            if (activeTask) {
+                responseJson(response, 409, {
+                    error: "Wait for the active task to finish before starting a new project task chat.",
+                });
+                return;
+            }
+
+            const project = workspaceManager.getContext().project;
+            responseJson(response, 201, {
+                state: "ready",
+                id: newProjectConversationId(project),
+                project: project || "inbox",
+                turns: [],
+                message: "New project task chat ready. Describe what you want to build or change.",
+            });
+            return;
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/conversation") {
+            const requestedConversationId = url.searchParams.get("id");
+            const conversationId = requestedConversationId || AGENT_CONVERSATION_ID;
+
+            if (!isAgentConversationId(conversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved project task chat." });
+                return;
+            }
+
+            try {
+                responseJson(response, 200, projectConversationPayload(projectSession, conversationId));
+            } catch {
+                responseJson(response, 200, {
+                    state: "unavailable",
+                    id: conversationId,
                     turns: [],
                     message: "Agent conversation history is temporarily unavailable.",
                 });
@@ -473,12 +624,21 @@ export function createUiServer({
                 return;
             }
 
+            const requestedConversationId = url.searchParams.get("id");
+            const conversationId = requestedConversationId || AGENT_CONVERSATION_ID;
+
+            if (!isAgentConversationId(conversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved project task chat." });
+                return;
+            }
+
             try {
-                projectSession.clear(AGENT_CONVERSATION_ID);
+                projectSession.clear(conversationId);
                 responseJson(response, 200, {
                     state: "cleared",
+                    id: conversationId,
                     turns: [],
-                    message: "Saved agent conversation cleared.",
+                    message: "Saved project task chat cleared.",
                 });
             } catch {
                 responseJson(response, 500, {
@@ -776,6 +936,20 @@ export function createUiServer({
                 return;
             }
 
+            const requestedConversationId = typeof body?.conversationId === "string"
+                ? body.conversationId
+                : null;
+
+            if (purpose === "chat" && requestedConversationId && !isGeneralChatConversationId(requestedConversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved general chat." });
+                return;
+            }
+
+            if (purpose === "project" && requestedConversationId && !isAgentConversationId(requestedConversationId)) {
+                responseJson(response, 400, { error: "Choose a valid saved project task chat." });
+                return;
+            }
+
             if (!allowProjectPreviews && !nemotronUltraModelFromEnvironment() && usesLocalOllamaEndpoint()) {
                 responseJson(response, 400, { error: hostedLocalModelError() });
                 return;
@@ -835,8 +1009,8 @@ export function createUiServer({
             let taskSucceeded = false;
             let taskResult = null;
             const conversationId = purpose === "chat"
-                ? GENERAL_CHAT_CONVERSATION_ID
-                : AGENT_CONVERSATION_ID;
+                ? requestedConversationId || GENERAL_CHAT_CONVERSATION_ID
+                : requestedConversationId || AGENT_CONVERSATION_ID;
 
             try {
                 if (safetyEnabled) {

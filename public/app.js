@@ -7,6 +7,9 @@ const projectTaskCount = document.querySelector("#project-task-count");
 const requirementsGuide = document.querySelector("#requirements-guide");
 const requirementsGuideMessage = document.querySelector("#requirements-guide-message");
 const requirementsStarter = document.querySelector("#requirements-starter");
+const newProjectChatButton = document.querySelector("#new-project-chat");
+const projectHistorySummary = document.querySelector("#project-history-summary");
+const projectHistoryList = document.querySelector("#project-history-list");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
 const chatRunButton = document.querySelector("#chat-run-button");
@@ -15,6 +18,9 @@ const chatHint = document.querySelector("#chat-hint");
 const chatTurns = document.querySelector("#chat-turns");
 const chatEmpty = document.querySelector("#chat-empty");
 const clearChatButton = document.querySelector("#clear-chat");
+const newChatButton = document.querySelector("#new-chat");
+const chatHistorySummary = document.querySelector("#chat-history-summary");
+const chatHistoryList = document.querySelector("#chat-history-list");
 const safetyGuard = document.querySelector("#safety-guard");
 const connection = document.querySelector("#connection");
 const modelRoute = document.querySelector("#model-route");
@@ -60,6 +66,7 @@ const resultText = document.querySelector("#result-text");
 const resultMark = document.querySelector("#result-mark");
 const resultMeta = document.querySelector("#result-meta");
 const cosmicBackdrop = document.querySelector(".cosmic-backdrop");
+const workspaceSwitches = [...document.querySelectorAll(".workspace-switch")];
 
 const toolLabels = {
   createProject: "Created a project",
@@ -123,11 +130,26 @@ let projectConversation = {
   turns: [],
   message: "Your tasks and final agent responses will appear here.",
 };
+let projectConversationHistory = {
+  state: "loading",
+  project: null,
+  chats: [],
+  message: "Loading saved task chats…",
+};
+let activeProjectConversationId = "agent-chat";
+let hasDraftProjectConversation = false;
 let chatConversation = {
   state: "idle",
   turns: [],
   message: "Start a conversation. Your chat is saved separately from every project.",
 };
+let chatHistory = {
+  state: "loading",
+  chats: [],
+  message: "Loading saved chats…",
+};
+let activeChatId = "general-chat";
+let hasDraftChat = false;
 let githubStatus = {
   state: "loading",
   configured: false,
@@ -148,6 +170,8 @@ const STATIC_PREVIEW_ROOT = "/api/projects/preview/";
 const PROJECT_DOWNLOAD_PATH = "/api/projects/download";
 const WORKSPACE_VIEW_STORAGE_KEY = "my-coding-agent:workspace-view";
 const SAFETY_GUARD_STORAGE_KEY = "my-coding-agent:nvidia-safety-enabled";
+const ACTIVE_CHAT_ID_STORAGE_KEY = "my-coding-agent:active-chat-id";
+const ACTIVE_PROJECT_CONVERSATION_ID_STORAGE_KEY = "my-coding-agent:active-project-conversation-id";
 const FILE_CHANGE_TOOLS = new Set(["writeFile", "editFile", "writeAgentSource", "editAgentSource"]);
 const MAX_FILE_CHANGE_ITEMS = 5;
 
@@ -287,6 +311,60 @@ function saveSafetyGuardPreference() {
   }
 }
 
+function isGeneralChatId(value) {
+  return value === "general-chat" || /^general-chat-[a-f0-9]{32}$/.test(value || "");
+}
+
+function restoreActiveChatId() {
+  try {
+    const savedId = window.localStorage.getItem(ACTIVE_CHAT_ID_STORAGE_KEY);
+    activeChatId = isGeneralChatId(savedId) ? savedId : "general-chat";
+  } catch {
+    activeChatId = "general-chat";
+  }
+}
+
+function saveActiveChatId() {
+  try {
+    window.localStorage.setItem(ACTIVE_CHAT_ID_STORAGE_KEY, activeChatId);
+  } catch {
+    // The selected chat still works when browser privacy settings prevent
+    // remembering it for the next local dashboard visit.
+  }
+}
+
+function activeChatUrl(path) {
+  const query = new URLSearchParams({ id: activeChatId || "general-chat" });
+  return `${path}?${query}`;
+}
+
+function isProjectConversationId(value) {
+  return value === "agent-chat" || /^agent-chat-(?:[a-z0-9]+(?:-[a-z0-9]+)*)-[a-f0-9]{32}$/.test(value || "");
+}
+
+function restoreActiveProjectConversationId() {
+  try {
+    const savedId = window.localStorage.getItem(ACTIVE_PROJECT_CONVERSATION_ID_STORAGE_KEY);
+    activeProjectConversationId = isProjectConversationId(savedId) ? savedId : "agent-chat";
+  } catch {
+    activeProjectConversationId = "agent-chat";
+  }
+}
+
+function saveActiveProjectConversationId() {
+  try {
+    window.localStorage.setItem(ACTIVE_PROJECT_CONVERSATION_ID_STORAGE_KEY, activeProjectConversationId);
+  } catch {
+    // The selected task chat still works when browser privacy settings prevent
+    // remembering it for the next local dashboard visit.
+  }
+}
+
+function activeProjectConversationUrl(path) {
+  const query = new URLSearchParams({ id: activeProjectConversationId || "agent-chat" });
+  return `${path}?${query}`;
+}
+
 function setWorkspaceView(view, { persist = true } = {}) {
   const target = view === "projects" ? "projects" : "chat";
 
@@ -296,10 +374,11 @@ function setWorkspaceView(view, { persist = true } = {}) {
     panel.classList.toggle("is-active", active);
   }
 
-  for (const button of document.querySelectorAll(".workspace-switch")) {
+  for (const button of workspaceSwitches) {
     const active = button.dataset.workspaceSwitch === target;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
   }
 
   if (persist) {
@@ -321,19 +400,46 @@ function restoreWorkspaceView() {
   }
 }
 
+function moveWorkspaceFocus(event) {
+  if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+
+  const currentIndex = workspaceSwitches.indexOf(event.currentTarget);
+  if (currentIndex === -1) return;
+
+  let nextIndex = currentIndex;
+  if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % workspaceSwitches.length;
+  if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + workspaceSwitches.length) % workspaceSwitches.length;
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = workspaceSwitches.length - 1;
+  if (nextIndex === currentIndex) return;
+
+  const nextWorkspace = workspaceSwitches[nextIndex];
+  nextWorkspace.focus();
+  setWorkspaceView(nextWorkspace.dataset.workspaceSwitch);
+}
+
 function setRunning(isRunning) {
   const taskControlsDisabled = isRunning || !taskStatusKnown;
   projectRunButton.disabled = taskControlsDisabled;
   projectTaskInput.disabled = taskControlsDisabled;
+  newProjectChatButton.disabled = taskControlsDisabled;
   chatRunButton.disabled = taskControlsDisabled;
   chatInput.disabled = taskControlsDisabled;
+  newChatButton.disabled = taskControlsDisabled;
   safetyGuard.disabled = taskControlsDisabled;
   clearConversationButton.disabled = taskControlsDisabled || projectConversation.turns.length === 0;
   clearChatButton.disabled = taskControlsDisabled || chatConversation.turns.length === 0;
   for (const control of document.querySelectorAll("[data-prompt], #project-list button")) {
     control.disabled = taskControlsDisabled;
   }
+  for (const control of document.querySelectorAll("[data-project-chat-thread]")) {
+    control.disabled = taskControlsDisabled;
+  }
   for (const control of document.querySelectorAll("[data-chat-prompt]")) {
+    control.disabled = taskControlsDisabled;
+  }
+  for (const control of document.querySelectorAll("[data-chat-thread]")) {
     control.disabled = taskControlsDisabled;
   }
   for (const control of document.querySelectorAll("[data-requirements-starter]")) {
@@ -1005,7 +1111,7 @@ function renderProjectConversation() {
   conversationSummary.textContent = projectConversation.message
     || "Agent conversation history is temporarily unavailable.";
   conversationTurns.textContent = "";
-  clearConversationButton.disabled = projectConversation.turns.length === 0 || Boolean(activeTaskId);
+  clearConversationButton.disabled = projectConversation.turns.length === 0 || Boolean(activeTaskId) || !taskStatusKnown;
 
   for (const turn of projectConversation.turns || []) {
     for (const [speaker, content] of [["user", turn.task], ["agent", turn.outcome]]) {
@@ -1030,9 +1136,52 @@ function renderProjectConversation() {
   }
 }
 
+function renderProjectConversationHistory() {
+  const chats = projectConversationHistory.chats || [];
+  projectHistoryList.textContent = "";
+  projectHistorySummary.textContent = projectConversationHistory.message
+    || "Saved project task chats are ready to continue.";
+  newProjectChatButton.disabled = !taskStatusKnown || Boolean(activeTaskId);
+
+  if (chats.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "project-history-empty";
+    empty.textContent = hasDraftProjectConversation
+      ? "This new task chat is ready for your next instruction."
+      : projectConversationHistory.state === "ready"
+        ? "Your earlier task chats will appear here."
+        : "Saved task chats are unavailable right now.";
+    projectHistoryList.append(empty);
+    return;
+  }
+
+  for (const chat of chats) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const active = chat.id === activeProjectConversationId;
+    button.type = "button";
+    button.className = "project-history-thread";
+    button.dataset.projectChatThread = chat.id;
+    button.disabled = !taskStatusKnown || Boolean(activeTaskId);
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+    button.title = chat.task || "Saved project task chat";
+
+    const title = document.createElement("strong");
+    title.textContent = chatThreadTitle(chat.task);
+    const detail = document.createElement("span");
+    const turnLabel = `${chat.turns || 0} turn${chat.turns === 1 ? "" : "s"}`;
+    detail.textContent = `${turnLabel} · ${chat.project || "Earlier task"}`;
+    button.append(title, detail);
+    button.addEventListener("click", () => selectProjectConversation(chat.id));
+    item.append(button);
+    projectHistoryList.append(item);
+  }
+}
+
 async function refreshProjectConversation() {
   try {
-    const response = await fetch("/api/conversation", { headers: { accept: "application/json" } });
+    const response = await fetch(activeProjectConversationUrl("/api/conversation"), { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("Agent conversation history is unavailable.");
     const conversation = await response.json();
     projectConversation = conversation;
@@ -1047,29 +1196,143 @@ async function refreshProjectConversation() {
   renderProjectConversation();
 }
 
+async function refreshProjectConversationHistory() {
+  try {
+    const response = await fetch("/api/project/conversations", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Saved project task chats are unavailable.");
+    projectConversationHistory = await response.json();
+
+    if (!hasDraftProjectConversation) {
+      const savedChat = projectConversationHistory.chats?.find((chat) => chat.id === activeProjectConversationId);
+      activeProjectConversationId = savedChat?.id || projectConversationHistory.chats?.[0]?.id || "agent-chat";
+      saveActiveProjectConversationId();
+    }
+  } catch {
+    projectConversationHistory = {
+      state: "unavailable",
+      project: workspaceContext.project || null,
+      chats: [],
+      message: "Saved project task chats are temporarily unavailable.",
+    };
+  }
+
+  renderProjectConversationHistory();
+}
+
+async function refreshProjectConversationWorkspace() {
+  await refreshProjectConversationHistory();
+  await refreshProjectConversation();
+}
+
+async function selectProjectConversation(id) {
+  if (!isProjectConversationId(id) || Boolean(activeTaskId) || id === activeProjectConversationId) return;
+  activeProjectConversationId = id;
+  hasDraftProjectConversation = false;
+  saveActiveProjectConversationId();
+  renderProjectConversationHistory();
+  await refreshProjectConversation();
+}
+
+async function startNewProjectConversation() {
+  if (newProjectChatButton.disabled) return;
+  newProjectChatButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/project/conversations", {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    const conversation = await response.json();
+    if (!response.ok || !isProjectConversationId(conversation.id)) {
+      throw new Error(conversation.error || "A new project task chat could not be started.");
+    }
+
+    activeProjectConversationId = conversation.id;
+    hasDraftProjectConversation = true;
+    projectConversation = conversation;
+    saveActiveProjectConversationId();
+    renderProjectConversationHistory();
+    renderProjectConversation();
+    projectTaskInput.focus();
+  } catch (error) {
+    showToast(error.message || "A new project task chat could not be started.", "error");
+    renderProjectConversationHistory();
+  }
+}
+
 async function clearProjectConversation() {
   if (clearConversationButton.disabled) return;
 
-  if (!window.confirm("Clear the saved agent conversation? This cannot be undone.")) {
+  if (!window.confirm("Clear this saved project task chat? This cannot be undone.")) {
     return;
   }
 
   clearConversationButton.disabled = true;
 
   try {
-    const response = await fetch("/api/conversation/clear", {
+    const response = await fetch(activeProjectConversationUrl("/api/conversation/clear"), {
       method: "POST",
       headers: { accept: "application/json" },
     });
     const conversation = await response.json();
     if (!response.ok) throw new Error(conversation.error || "Agent conversation could not be cleared.");
     projectConversation = conversation;
-    addActivity("Cleared agent conversation", "Removed saved follow-up context for this dashboard.");
+    hasDraftProjectConversation = true;
+    await refreshProjectConversationHistory();
+    addActivity("Cleared project task chat", "Removed saved follow-up context for this task chat.");
   } catch (error) {
     addActivity("Could not clear conversation", error.message || "Try again in a moment.", "failed");
   }
 
   renderProjectConversation();
+}
+
+function chatThreadTitle(value) {
+  const normalized = String(value || "New chat").replace(/\s+/g, " ").trim();
+  return normalized.length > 54 ? `${normalized.slice(0, 53)}…` : normalized;
+}
+
+function renderChatHistory() {
+  const chats = chatHistory.chats || [];
+  chatHistoryList.textContent = "";
+  chatHistorySummary.textContent = chatHistory.message
+    || "Your saved general chats stay private on this device.";
+  newChatButton.disabled = !taskStatusKnown || Boolean(activeTaskId);
+
+  if (chats.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "chat-history-empty";
+    empty.textContent = hasDraftChat
+      ? "This new chat is ready for your first question."
+      : chatHistory.state === "ready"
+        ? "Your earlier chats will appear here."
+        : "Saved chats are unavailable right now.";
+    chatHistoryList.append(empty);
+    return;
+  }
+
+  for (const chat of chats) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const active = chat.id === activeChatId;
+    button.type = "button";
+    button.className = "chat-history-thread";
+    button.dataset.chatThread = chat.id;
+    button.disabled = !taskStatusKnown || Boolean(activeTaskId);
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+    button.title = chat.task || "Saved chat";
+
+    const title = document.createElement("strong");
+    title.textContent = chatThreadTitle(chat.task);
+    const detail = document.createElement("span");
+    const turnLabel = `${chat.turns || 0} turn${chat.turns === 1 ? "" : "s"}`;
+    detail.textContent = `${turnLabel} · ${historyDate(chat.completedAt)}`;
+    button.append(title, detail);
+    button.addEventListener("click", () => selectChatConversation(chat.id));
+    item.append(button);
+    chatHistoryList.append(item);
+  }
 }
 
 function renderChatConversation() {
@@ -1078,7 +1341,7 @@ function renderChatConversation() {
   chatEmpty.hidden = turns.length > 0;
   chatEmpty.textContent = chatConversation.message
     || "Start a conversation. Your chat is saved separately from every project.";
-  clearChatButton.disabled = turns.length === 0 || Boolean(activeTaskId);
+  clearChatButton.disabled = turns.length === 0 || Boolean(activeTaskId) || !taskStatusKnown;
 
   for (const turn of turns) {
     for (const [speaker, content] of [["user", turn.task], ["agent", turn.outcome]]) {
@@ -1106,14 +1369,37 @@ function renderChatConversation() {
   chatTurns.scrollTop = chatTurns.scrollHeight;
 }
 
+async function refreshChatHistory() {
+  try {
+    const response = await fetch("/api/chat/conversations", { headers: { accept: "application/json" } });
+    if (!response.ok) throw new Error("Saved general chats are unavailable.");
+    chatHistory = await response.json();
+
+    if (!hasDraftChat) {
+      const savedChat = chatHistory.chats?.find((chat) => chat.id === activeChatId);
+      activeChatId = savedChat?.id || chatHistory.chats?.[0]?.id || "general-chat";
+      saveActiveChatId();
+    }
+  } catch {
+    chatHistory = {
+      state: "unavailable",
+      chats: [],
+      message: "Saved general chats are temporarily unavailable.",
+    };
+  }
+
+  renderChatHistory();
+}
+
 async function refreshChatConversation() {
   try {
-    const response = await fetch("/api/chat/conversation", { headers: { accept: "application/json" } });
+    const response = await fetch(activeChatUrl("/api/chat/conversation"), { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("General chat history is unavailable.");
     chatConversation = await response.json();
   } catch {
     chatConversation = {
       state: "unavailable",
+      id: activeChatId,
       turns: [],
       message: "General chat history is temporarily unavailable.",
     };
@@ -1122,23 +1408,66 @@ async function refreshChatConversation() {
   renderChatConversation();
 }
 
+async function refreshChatWorkspace() {
+  await refreshChatHistory();
+  await refreshChatConversation();
+}
+
+async function selectChatConversation(id) {
+  if (!isGeneralChatId(id) || Boolean(activeTaskId) || id === activeChatId) return;
+  activeChatId = id;
+  hasDraftChat = false;
+  saveActiveChatId();
+  renderChatHistory();
+  await refreshChatConversation();
+}
+
+async function startNewChat() {
+  if (newChatButton.disabled) return;
+  newChatButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    const conversation = await response.json();
+    if (!response.ok || !isGeneralChatId(conversation.id)) {
+      throw new Error(conversation.error || "A new chat could not be started.");
+    }
+
+    activeChatId = conversation.id;
+    hasDraftChat = true;
+    chatConversation = conversation;
+    saveActiveChatId();
+    renderChatHistory();
+    renderChatConversation();
+    chatInput.focus();
+  } catch (error) {
+    showToast(error.message || "A new chat could not be started.", "error");
+    renderChatHistory();
+  }
+}
+
 async function clearChatConversation() {
   if (clearChatButton.disabled) return;
 
-  if (!window.confirm("Clear the saved general chat? This cannot be undone.")) {
+  if (!window.confirm("Clear this saved general chat? This cannot be undone.")) {
     return;
   }
 
   clearChatButton.disabled = true;
 
   try {
-    const response = await fetch("/api/chat/conversation/clear", {
+    const response = await fetch(activeChatUrl("/api/chat/conversation/clear"), {
       method: "POST",
       headers: { accept: "application/json" },
     });
     const conversation = await response.json();
     if (!response.ok) throw new Error(conversation.error || "General chat could not be cleared.");
     chatConversation = conversation;
+    hasDraftChat = true;
+    await refreshChatHistory();
     showToast("General chat cleared.", "success");
   } catch (error) {
     showToast(error.message || "General chat could not be cleared.", "error");
@@ -1365,7 +1694,7 @@ async function refreshContext() {
       refreshStaticPreviewStatus(),
       refreshProjectEvaluation(),
       refreshProjectPlan(),
-      refreshProjectConversation(),
+      refreshProjectConversationWorkspace(),
       refreshGitHubStatus(),
     ]);
   } catch {
@@ -1557,7 +1886,12 @@ async function runTask(task, purpose = "project") {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, purpose, safety: safetyGuard.checked }),
+      body: JSON.stringify({
+        task,
+        purpose,
+        safety: safetyGuard.checked,
+        conversationId: purpose === "chat" ? activeChatId : activeProjectConversationId,
+      }),
     });
 
     if (!response.ok) {
@@ -1580,8 +1914,10 @@ async function runTask(task, purpose = "project") {
     if (!receivedResult) {
       throw new Error("The task stream ended before the agent returned a result.");
     }
+    if (purpose === "chat") hasDraftChat = false;
+    if (purpose === "project") hasDraftProjectConversation = false;
     await refreshContext();
-    await refreshChatConversation();
+    await refreshChatWorkspace();
     const input = purpose === "chat" ? chatInput : projectTaskInput;
     input.value = "";
     if (purpose === "project") updateProjectTaskCount();
@@ -1696,11 +2032,14 @@ runLiveEvaluationsButton.addEventListener("click", () => runAgentEvaluations("li
 publishGitHubButton.addEventListener("click", publishGitHubProject);
 clearConversationButton.addEventListener("click", clearProjectConversation);
 clearChatButton.addEventListener("click", clearChatConversation);
+newChatButton.addEventListener("click", startNewChat);
+newProjectChatButton.addEventListener("click", startNewProjectConversation);
 
-for (const switcher of document.querySelectorAll("[data-workspace-switch]")) {
+for (const switcher of workspaceSwitches) {
   switcher.addEventListener("click", () => {
     setWorkspaceView(switcher.dataset.workspaceSwitch);
   });
+  switcher.addEventListener("keydown", moveWorkspaceFocus);
 }
 
 for (const toggle of document.querySelectorAll("[data-panel-toggle]")) {
@@ -1759,12 +2098,14 @@ window.addEventListener("scroll", () => {
 updateCosmicParallax();
 
 restoreSafetyGuardPreference();
+restoreActiveChatId();
+restoreActiveProjectConversationId();
 restoreWorkspaceView();
 updateProjectTaskCount();
 setRunning(false);
 refreshActiveTask({ announce: true, replaceActivity: true });
 refreshContext();
-refreshChatConversation();
+refreshChatWorkspace();
 refreshAgentEvaluation();
 refreshTaskHistory();
 refreshGitHubStatus();

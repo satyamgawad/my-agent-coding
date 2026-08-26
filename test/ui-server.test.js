@@ -292,6 +292,111 @@ test("general chat stays separate from project context and project conversations
     assert.equal((await history.json()).records[0].project, null);
 });
 
+test("general chat supports private, selectable conversation threads", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate() {
+                return { content: "A thread-specific answer." };
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const created = await fetch(`${baseUrl}/api/chat/conversations`, { method: "POST" });
+    assert.equal(created.status, 201);
+    const firstChat = await created.json();
+    assert.match(firstChat.id, /^general-chat-[a-f0-9]{32}$/);
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            task: "Keep this answer in the new thread.",
+            purpose: "chat",
+            conversationId: firstChat.id,
+        }),
+    });
+    assert.equal(task.status, 200);
+    await task.text();
+
+    const conversations = await fetch(`${baseUrl}/api/chat/conversations`);
+    assert.deepEqual((await conversations.json()).chats.map(({ id, task: prompt }) => ({ id, prompt })), [{
+        id: firstChat.id,
+        prompt: "Keep this answer in the new thread.",
+    }]);
+
+    const selected = await fetch(`${baseUrl}/api/chat/conversation?id=${firstChat.id}`);
+    assert.deepEqual((await selected.json()).turns.map(({ task: prompt, outcome }) => ({ prompt, outcome })), [{
+        prompt: "Keep this answer in the new thread.",
+        outcome: "A thread-specific answer.",
+    }]);
+
+    const defaultChat = await fetch(`${baseUrl}/api/chat/conversation`);
+    assert.deepEqual((await defaultChat.json()).turns, []);
+
+    const invalidThread = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Do not accept this thread.", purpose: "chat", conversationId: "agent-chat" }),
+    });
+    assert.equal(invalidThread.status, 400);
+});
+
+test("project tasks support private, selectable task-chat threads", async (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const server = createUiServer({
+        agentRoot: root,
+        createModel: () => ({
+            async generate() {
+                return { content: "A project-thread answer." };
+            },
+        }),
+    });
+    const baseUrl = await startServer(server);
+
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    const created = await fetch(`${baseUrl}/api/project/conversations`, { method: "POST" });
+    assert.equal(created.status, 201);
+    const taskChat = await created.json();
+    assert.match(taskChat.id, /^agent-chat-inbox-[a-f0-9]{32}$/);
+
+    const task = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            task: "Keep this in the new project task chat.",
+            purpose: "project",
+            conversationId: taskChat.id,
+        }),
+    });
+    assert.equal(task.status, 200);
+    await task.text();
+
+    const chats = await fetch(`${baseUrl}/api/project/conversations`);
+    assert.deepEqual((await chats.json()).chats.map(({ id, task: prompt, project }) => ({ id, prompt, project })), [{
+        id: taskChat.id,
+        prompt: "Keep this in the new project task chat.",
+        project: "inbox",
+    }]);
+
+    const selected = await fetch(`${baseUrl}/api/conversation?id=${taskChat.id}`);
+    assert.deepEqual((await selected.json()).turns.map(({ task: prompt, outcome }) => ({ prompt, outcome })), [{
+        prompt: "Keep this in the new project task chat.",
+        outcome: "A project-thread answer.",
+    }]);
+});
+
 test("the optional NVIDIA Safety Guard checks requests and answers without blocking a local fallback", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const checks = [];
@@ -919,11 +1024,48 @@ test("the dashboard renders a scrolling moon and solar-system background", () =>
     assert.match(styles, /prefers-reduced-motion/);
 });
 
-test("the dashboard renders and clears the saved agent conversation", () => {
+test("the dashboard provides a side rail for saved general chat threads", () => {
     const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
-    assert.match(page, /AGENT CONVERSATION/);
+    assert.match(page, /id="chat-history-list"/);
+    assert.match(page, /id="new-chat"/);
+    assert.match(page, /CHAT HISTORY/);
+    assert.match(script, /function refreshChatWorkspace/);
+    assert.match(script, /function selectChatConversation/);
+    assert.match(script, /conversationId: purpose === "chat" \? activeChatId/);
+});
+
+test("the dashboard provides a side rail for saved project task chats", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /id="project-history-list"/);
+    assert.match(page, /id="new-project-chat"/);
+    assert.match(page, /TASK HISTORY/);
+    assert.match(script, /function refreshProjectConversationWorkspace/);
+    assert.match(script, /function selectProjectConversation/);
+    assert.match(script, /conversationId: purpose === "chat" \? activeChatId : activeProjectConversationId/);
+});
+
+test("the dashboard provides an accessible, keyboard-operable workspace switcher", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /id="chat-tab"[^>]*role="tab"[^>]*aria-controls="chat-workspace"/);
+    assert.match(page, /id="projects-tab"[^>]*role="tab"[^>]*aria-controls="projects-workspace"/);
+    assert.match(page, /id="chat-workspace"[^>]*aria-labelledby="chat-tab"/);
+    assert.match(page, /id="projects-workspace"[^>]*aria-labelledby="projects-tab"/);
+    assert.match(script, /function moveWorkspaceFocus/);
+    assert.match(script, /event\.key === "ArrowRight"/);
+    assert.match(script, /event\.key === "ArrowLeft"/);
+});
+
+test("the dashboard renders and clears the saved project task chat", () => {
+    const page = fs.readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+    assert.match(page, /PROJECT TASK CHAT/);
     assert.match(page, /id="conversation-turns"/);
     assert.match(page, /id="clear-conversation"/);
     assert.match(script, /\/api\/conversation/);

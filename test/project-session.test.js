@@ -63,3 +63,31 @@ test("project conversations redact common secrets and can be cleared", (t) => {
     session.clear("alpha");
     assert.deepEqual(session.recent("alpha"), []);
 });
+
+test("named chat transcripts can be listed newest-first without exposing their outcomes", (t) => {
+    const { workspaceManager } = createWorkspace(t);
+    let now = new Date("2026-08-11T10:00:00.000Z");
+    const session = new ProjectSession({ workspaceManager, now: () => now });
+
+    session.record("general-chat", { task: "Earlier question", outcome: "Earlier answer" });
+    now = new Date("2026-08-12T10:00:00.000Z");
+    session.record("general-chat-aabbccddeeff00112233445566778899", {
+        task: "Newer question",
+        outcome: "Newer answer",
+    });
+
+    assert.deepEqual(session.list("general-chat"), [
+        {
+            id: "general-chat-aabbccddeeff00112233445566778899",
+            turns: 1,
+            task: "Newer question",
+            completedAt: "2026-08-12T10:00:00.000Z",
+        },
+        {
+            id: "general-chat",
+            turns: 1,
+            task: "Earlier question",
+            completedAt: "2026-08-11T10:00:00.000Z",
+        },
+    ]);
+});
