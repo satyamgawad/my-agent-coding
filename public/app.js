@@ -17,6 +17,7 @@ const chatEmpty = document.querySelector("#chat-empty");
 const clearChatButton = document.querySelector("#clear-chat");
 const safetyGuard = document.querySelector("#safety-guard");
 const connection = document.querySelector("#connection");
+const modelRoute = document.querySelector("#model-route");
 const activeProjectCard = document.querySelector("#active-project");
 const activeProject = document.querySelector("#active-project strong");
 const projectCount = document.querySelector("#project-count");
@@ -263,6 +264,11 @@ function renderAnswerText(container, value) {
 function setConnection(text, offline = false) {
   connection.lastElementChild.textContent = text;
   connection.firstElementChild.style.background = offline ? "var(--coral)" : "var(--aqua)";
+}
+
+function setModelRoute(label, fallback = false) {
+  modelRoute.lastElementChild.textContent = label;
+  modelRoute.classList.toggle("is-fallback", fallback);
 }
 
 function restoreSafetyGuardPreference() {
@@ -1211,7 +1217,7 @@ async function runAgentEvaluations(mode = "deterministic") {
     const response = await fetch("/api/evaluations/run", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ mode, modelMode: "auto" }),
+      body: JSON.stringify({ mode }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "The evaluation suite could not finish.");
@@ -1468,25 +1474,14 @@ function handleProgress(event) {
     return;
   }
 
-  if (event.message === "smart: creating implementation brief") {
-    addActivity("Smart planning", "Creating a compact implementation brief before editing.");
-    return;
-  }
-
-  if (event.message === "smart: reviewing completion") {
-    addActivity("Independent review", "Checking the proposed outcome against verified task evidence.");
-    return;
-  }
-
-  if (event.message === "smart: saved project brief") {
-    addActivity("Saved Smart brief", "A compact handoff is ready for a later project task.");
-    return;
-  }
-
   addActivity(event.message || "Agent update", event.error?.message || "");
 }
 
 function handleModelRoute(event) {
+  setModelRoute(
+    event.fallback ? `Local fallback · ${event.label}` : event.label,
+    event.fallback
+  );
   const detail = event.fallback
     ? `The previous provider was unavailable${event.error ? `: ${event.error}` : "."}`
     : event.summary;
@@ -1562,7 +1557,7 @@ async function runTask(task, purpose = "project") {
     const response = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ task, mode: "auto", purpose, safety: safetyGuard.checked }),
+      body: JSON.stringify({ task, purpose, safety: safetyGuard.checked }),
     });
 
     if (!response.ok) {

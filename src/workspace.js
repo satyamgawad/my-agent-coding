@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// Keep deleting legacy brief metadata with its project, even though new briefs
+// are no longer created or read by the agent.
 const PROJECT_METADATA_DIRECTORIES = ["project-briefs", "project-plans"];
 
 function workspaceError(message, code) {

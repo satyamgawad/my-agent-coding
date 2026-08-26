@@ -28,10 +28,11 @@ test("Nemotron prompt documents exactly the registered tool names and contracts"
     }
     assert.doesNotMatch(prompt, /deleteFile/);
     assert.match(prompt, /do not add its name to a path/);
-    assert.match(prompt, /Simple workflow:/);
+    assert.match(prompt, /Application and website workflow:/);
+    assert.match(prompt, /createProjectPlan before writing application files/);
     assert.match(prompt, /smallest complete solution/);
     assert.match(prompt, /Immediately read back every changed file/);
-    assert.match(prompt, /Do not repeat the same failing call/);
+    assert.match(prompt, /Never rerun a failed test without first making and verifying a repair/);
     assert.match(prompt, /run projectReadiness after passing tests/);
     assert.match(prompt, /Use agent-source tools only for an explicit request/);
 });
@@ -136,39 +137,11 @@ test("Nemotron accepts an explicit model override for routed tasks", async () =>
     assert.equal(requests[0].model, "z-ai/glm-5.2");
 });
 
-test("the local Ollama endpoint is the default and a remote compatible endpoint is optional", () => {
+test("the local Ollama endpoint is the default", () => {
     assert.deepEqual(modelEndpointConfig({}), {
         apiKey: "ollama",
         baseURL: "http://127.0.0.1:11434/v1",
     });
-    assert.deepEqual(modelEndpointConfig({
-        AGENT_MODEL_API_KEY: "provider-key",
-        AGENT_MODEL_BASE_URL: "https://provider.example.test/v1",
-    }), {
-        apiKey: "provider-key",
-        baseURL: "https://provider.example.test/v1",
-    });
-    assert.throws(
-        () => modelEndpointConfig({ AGENT_MODEL_API_KEY: "key", AGENT_MODEL_BASE_URL: "not-a-url" }),
-        /AGENT_MODEL_BASE_URL/
-    );
-    assert.throws(
-        () => modelEndpointConfig({ AGENT_MODEL_BASE_URL: "https://provider.example.test/v1" }),
-        /AGENT_MODEL_API_KEY/
-    );
-});
-
-test("Muse uses the dedicated NVIDIA endpoint without affecting the Ollama fallback", () => {
-    assert.deepEqual(modelEndpointConfig({
-        NVIDIA_API_KEY: "nvidia-key",
-    }, { endpoint: "nvidiaMuse" }), {
-        apiKey: "nvidia-key",
-        baseURL: "https://integrate.api.nvidia.com/v1",
-    });
-    assert.throws(
-        () => modelEndpointConfig({}, { endpoint: "nvidiaMuse" }),
-        /NVIDIA_API_KEY/
-    );
 });
 
 test("Nemotron 3 Ultra uses the dedicated NVIDIA endpoint without affecting the Ollama fallback", () => {

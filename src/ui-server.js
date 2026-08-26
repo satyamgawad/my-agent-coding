@@ -6,12 +6,10 @@ import { pathToFileURL } from "node:url";
 import Agent from "./agent.js";
 import EvaluationSuite from "./evaluation-suite.js";
 import GitHubPublisher from "./github-publisher.js";
-import ModelHealth from "./model-health.js";
-import ModelRouter, { customModelFromEnvironment, MODEL_MODES, museModelFromEnvironment, nemotronUltraModelFromEnvironment } from "./model-router.js";
-import Nemotron, { listProviderModels } from "./nemotron.js";
+import ModelRouter, { nemotronUltraModelFromEnvironment } from "./model-router.js";
+import Nemotron from "./nemotron.js";
 import NvidiaSafety from "./nvidia-safety.js";
 import ProjectArtifacts from "./project-artifacts.js";
-import ProjectBrief from "./project-brief.js";
 import { ProjectEvaluator } from "./project-intelligence.js";
 import ProjectPlan from "./project-plan.js";
 import ProjectRunner from "./project-runner.js";
@@ -23,7 +21,6 @@ const MAX_REQUEST_BYTES = 16 * 1024;
 const SSE_HEARTBEAT_INTERVAL_MS = 15 * 1_000;
 const REMOTE_PASSWORD_MIN_LENGTH = 16;
 const DASHBOARD_USERNAME = "agent";
-const LOCAL_OLLAMA_MODES = new Set(["auto", "build", "smart", "local", "gemma"]);
 const STATIC_ASSETS = new Map([
     ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
     ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
@@ -211,7 +208,7 @@ function usesLocalOllamaEndpoint(environment = process.env) {
 }
 
 function hostedLocalModelError() {
-    return "This hosted dashboard cannot reach Ollama running on your Mac. Choose Remote with a hosted OpenAI-compatible model, choose NVIDIA Ultra, or configure a secured remote OLLAMA_BASE_URL.";
+    return "This hosted dashboard cannot reach Ollama running on your Mac. Configure NVIDIA_API_KEY or use the local dashboard.";
 }
 
 function projectPreviewUnavailable() {
@@ -253,26 +250,9 @@ function activeTaskStatus(activeTask) {
     };
 }
 
-function unavailableModelModeError(mode) {
-    if (mode === "power" && !museModelFromEnvironment()) {
-        return "Muse Power Build needs NVIDIA_MUSE_MODEL in .env. Add the exact model ID from your NVIDIA API Catalog page, then restart the dashboard.";
-    }
-
-    if (mode === "ultra" && !nemotronUltraModelFromEnvironment()) {
-        return "Nemotron 3 Ultra needs NVIDIA_API_KEY in .env. Add your NVIDIA API Catalog key, then restart the dashboard.";
-    }
-
-    if (mode === "custom" && !customModelFromEnvironment()) {
-        return "Remote mode needs AGENT_MODEL, AGENT_MODEL_BASE_URL, and AGENT_MODEL_API_KEY in .env.";
-    }
-
-    return "Choose a supported model mode.";
-}
-
 export function createUiServer({
     agentRoot = process.cwd(),
     createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
-    modelHealth = new ModelHealth({ listModels: () => listProviderModels({ endpoint: "ollama" }) }),
     accessPassword = "",
     allowProjectPreviews = true,
     taskTimeoutMs = resolveTaskTimeout(),
@@ -284,7 +264,6 @@ export function createUiServer({
     const projectArtifacts = new ProjectArtifacts(workspaceManager);
     const publisher = githubPublisher || new GitHubPublisher({ projectArtifacts });
     const projectEvaluator = new ProjectEvaluator(workspaceManager);
-    const projectBrief = new ProjectBrief({ workspaceManager });
     const projectPlan = new ProjectPlan({ workspaceManager });
     const projectRunner = new ProjectRunner(workspaceManager);
     const projectSession = new ProjectSession({ workspaceManager });
@@ -375,19 +354,6 @@ export function createUiServer({
             return;
         }
 
-        if (request.method === "GET" && url.pathname === "/api/models/health") {
-            try {
-                responseJson(response, 200, await modelHealth.check());
-            } catch {
-                responseJson(response, 200, {
-                    status: "unknown",
-                    models: [],
-                    error: "Model availability could not be checked.",
-                });
-            }
-            return;
-        }
-
         if (request.method === "GET" && url.pathname === "/api/context") {
             responseJson(response, 200, workspaceManager.getContext());
             return;
@@ -431,23 +397,6 @@ export function createUiServer({
                     progress: { completed: 0, total: 0 },
                     milestones: [],
                     message: "Project plan metadata is temporarily unavailable.",
-                });
-            }
-            return;
-        }
-
-        if (request.method === "GET" && url.pathname === "/api/projects/brief") {
-            try {
-                responseJson(response, 200, projectBrief.read());
-            } catch {
-                responseJson(response, 200, {
-                    state: "unavailable",
-                    project: workspaceManager.getContext().project,
-                    goal: null,
-                    plan: null,
-                    outcome: null,
-                    updatedAt: null,
-                    message: "Smart mode project brief is temporarily unavailable.",
                 });
             }
             return;
@@ -566,25 +515,14 @@ export function createUiServer({
             }
 
             const evaluationMode = typeof body?.mode === "string" ? body.mode : "deterministic";
-            const modelMode = typeof body?.modelMode === "string" ? body.modelMode : "auto";
 
             if (!["deterministic", "live"].includes(evaluationMode)) {
                 responseJson(response, 400, { error: "Choose a supported evaluation mode." });
                 return;
             }
 
-            if (evaluationMode === "live" && (
-                !MODEL_MODES.has(modelMode) ||
-                (modelMode === "custom" && !customModelFromEnvironment()) ||
-                (modelMode === "power" && !museModelFromEnvironment()) ||
-                (modelMode === "ultra" && !nemotronUltraModelFromEnvironment())
-            )) {
-                responseJson(response, 400, { error: unavailableModelModeError(modelMode) });
-                return;
-            }
-
             if (evaluationMode === "live" && !allowProjectPreviews &&
-                LOCAL_OLLAMA_MODES.has(modelMode) && usesLocalOllamaEndpoint()) {
+                !nemotronUltraModelFromEnvironment() && usesLocalOllamaEndpoint()) {
                 responseJson(response, 400, { error: hostedLocalModelError() });
                 return;
             }
@@ -608,7 +546,6 @@ export function createUiServer({
                 mode: evaluationMode,
                 createAgentModel: evaluationMode === "live"
                     ? () => new ModelRouter({
-                        mode: modelMode,
                         createModel,
                         unavailableProfiles,
                     })
@@ -826,21 +763,11 @@ export function createUiServer({
             }
 
             const task = typeof body?.task === "string" ? body.task.trim() : "";
-            const mode = typeof body?.mode === "string" ? body.mode : "auto";
             const purpose = typeof body?.purpose === "string" ? body.purpose : "project";
             const safetyEnabled = body?.safety === true;
-            const planOnly = body?.planOnly === true;
 
             if (!task) {
                 responseJson(response, 400, { error: "Describe a task before running it." });
-                return;
-            }
-
-            if (!MODEL_MODES.has(mode) ||
-                (mode === "custom" && !customModelFromEnvironment()) ||
-                (mode === "power" && !museModelFromEnvironment()) ||
-                (mode === "ultra" && !nemotronUltraModelFromEnvironment())) {
-                responseJson(response, 400, { error: unavailableModelModeError(mode) });
                 return;
             }
 
@@ -849,12 +776,7 @@ export function createUiServer({
                 return;
             }
 
-            if (planOnly && purpose !== "project") {
-                responseJson(response, 400, { error: "Plan review is available only for project tasks." });
-                return;
-            }
-
-            if (!allowProjectPreviews && LOCAL_OLLAMA_MODES.has(mode) && usesLocalOllamaEndpoint()) {
+            if (!allowProjectPreviews && !nemotronUltraModelFromEnvironment() && usesLocalOllamaEndpoint()) {
                 responseJson(response, 400, { error: hostedLocalModelError() });
                 return;
             }
@@ -889,7 +811,6 @@ export function createUiServer({
             }, taskTimeoutMs);
 
             const model = new ModelRouter({
-                mode,
                 createModel,
                 unavailableProfiles,
                 onRoute: ({ profile, fallback, error }) => {
@@ -903,7 +824,6 @@ export function createUiServer({
             });
             const agent = new Agent(model, {
                 workspaceManager,
-                projectBrief,
                 onEvent: ({ message, details }) => {
                     if (details?.tool) {
                         taskRecord.steps = (taskRecord.steps || 0) + 1;
@@ -942,7 +862,6 @@ export function createUiServer({
                         signal: taskRecord.controller.signal,
                         sessionContext: projectSession.recent(conversationId),
                         purpose,
-                        planOnly,
                     });
                     taskResult = result;
                     taskSucceeded = !isTaskFailure(result);
@@ -976,7 +895,6 @@ export function createUiServer({
                     timedOut: taskRecord.timedOut,
                     durationMs: Date.now() - taskRecord.startedAt,
                     steps: taskRecord.steps || 0,
-                    planOnly,
                 });
             } catch (error) {
                 taskResult = `❌ The agent could not complete this task: ${error.message || String(error)}`;
@@ -988,7 +906,6 @@ export function createUiServer({
                     timedOut: taskRecord.timedOut,
                     durationMs: Date.now() - taskRecord.startedAt,
                     steps: taskRecord.steps || 0,
-                    planOnly,
                 });
             } finally {
                 clearTimeout(taskTimeout);

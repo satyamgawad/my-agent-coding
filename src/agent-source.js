@@ -11,7 +11,6 @@ const READABLE_ROOTS = new Set(["src", "public", "test", ".github"]);
 const WRITABLE_ROOTS = new Set(["public", "test"]);
 const WRITABLE_SOURCE_FILES = new Set([
     "README.md",
-    "src/model-health.js",
     "src/model-router.js",
     "src/project-intelligence.js",
     "src/task-history.js",

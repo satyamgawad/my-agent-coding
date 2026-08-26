@@ -52,7 +52,7 @@ data: {"ok":true,"result":"Done"}
     ]);
 });
 
-test("streamTask sends the requested mode and forwards dashboard events", async () => {
+test("streamTask uses automatic routing and forwards dashboard events", async () => {
     const calls = [];
     const events = [];
     let taskId = null;
@@ -75,7 +75,6 @@ data: {"ok":true,"result":"Done"}
 
     await streamTask("http://127.0.0.1:3333", {
         task: "Improve the selected project.",
-        mode: "smart",
         accessPassword: "correct horse battery staple",
         fetchImpl,
         onTaskId: (value) => { taskId = value; },
@@ -88,7 +87,6 @@ data: {"ok":true,"result":"Done"}
     assert.match(calls[0].options.headers.authorization, /^Basic /);
     assert.deepEqual(JSON.parse(calls[0].options.body), {
         task: "Improve the selected project.",
-        mode: "smart",
     });
     assert.equal(taskId, "task-7");
     assert.equal(events[1].data.result, "Done");

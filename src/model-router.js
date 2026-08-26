@@ -1,50 +1,9 @@
 import Nemotron from "./nemotron.js";
 
 export const DEFAULT_LOCAL_MODEL = "qwen2.5-coder:7b";
-export const DEFAULT_GEMMA_MODEL = "gemma4:e2b";
-export const DEFAULT_NVIDIA_MUSE_MODEL = "meta/muse-glimmer-30b";
 export const DEFAULT_NVIDIA_NEMOTRON_ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b";
 
-export const MODEL_PROFILES = Object.freeze({
-    local: Object.freeze({
-        id: DEFAULT_LOCAL_MODEL,
-        label: "Qwen 2.5 Coder 7B",
-        summary: "Free local Ollama coding model",
-    }),
-    gemma: Object.freeze({
-        id: DEFAULT_GEMMA_MODEL,
-        label: "Gemma 4 E2B",
-        summary: "Free local Ollama chat, vision, audio, and reasoning model",
-    }),
-});
-
-// Keep previously saved dashboard preferences working after the move away from
-// hosted routes. They now resolve to the single reliable local route.
-const LEGACY_MODEL_MODE_ALIASES = Object.freeze({
-    flash: "local",
-    lightning: "local",
-    nano: "local",
-    oss: "local",
-    llama: "local",
-    kimi: "local",
-    oss120: "local",
-    glm: "local",
-});
-
-export const MODEL_MODES = new Set(["auto", "build", "smart", "local", "gemma", "power", "ultra", "custom"]);
-
 const UNAVAILABLE_MODEL_TTL_MS = 15 * 60 * 1_000;
-
-export function customModelFromEnvironment(environment = process.env) {
-    return environment.AGENT_MODEL || null;
-}
-
-export function museModelFromEnvironment(environment = process.env) {
-    return environment.NVIDIA_MUSE_MODEL || environment.MUSE_MODEL ||
-        (environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY
-            ? DEFAULT_NVIDIA_MUSE_MODEL
-            : null);
-}
 
 export function nemotronUltraModelFromEnvironment(environment = process.env) {
     const apiKey = environment.NVIDIA_NEMOTRON_ULTRA_API_KEY || environment.NVIDIA_ULTRA_API_KEY || environment.NVIDIA_API_KEY;
@@ -60,90 +19,28 @@ function localProfile(modelId) {
 
     return {
         id,
-        label: id === DEFAULT_LOCAL_MODEL ? MODEL_PROFILES.local.label : id,
-        summary: id === DEFAULT_LOCAL_MODEL
-            ? MODEL_PROFILES.local.summary
-            : "Local Ollama model",
-    };
-}
-
-function gemmaProfile(modelId) {
-    const id = typeof modelId === "string" && modelId.trim()
-        ? modelId.trim()
-        : DEFAULT_GEMMA_MODEL;
-
-    return {
-        id,
-        label: id === DEFAULT_GEMMA_MODEL ? MODEL_PROFILES.gemma.label : id,
-        summary: id === DEFAULT_GEMMA_MODEL
-            ? MODEL_PROFILES.gemma.summary
-            : "Local Ollama chat and reasoning model",
+        label: id === DEFAULT_LOCAL_MODEL ? "Qwen 2.5 Coder 7B" : id,
+        summary: "Local Ollama coding model",
         endpoint: "ollama",
     };
 }
 
-function localCodingProfile(modelId) {
-    return { ...localProfile(modelId), endpoint: "ollama" };
-}
+function automaticRoute(ultraModel, localModel) {
+    const local = localProfile(localModel);
 
-function routeForMode(mode, customModel, museModel, ultraModel, localModel, gemmaModel) {
-    const local = localCodingProfile(localModel);
-
-    // The normal route is intentionally simple: prefer the configured
-    // NVIDIA coding model, then fall back to the local model. This keeps the
-    // dashboard useful without asking people to choose between overlapping
-    // model and workflow modes for every task.
-    if (mode === "auto" && ultraModel) {
-        return [
-            {
-                id: ultraModel,
-                label: "Nemotron 3 Ultra",
-                summary: "NVIDIA-hosted coding model with local Qwen fallback",
-                endpoint: "nvidiaUltra",
-            },
-            local,
-        ];
-    }
-
-    if (mode === "gemma") {
-        const gemma = gemmaProfile(gemmaModel);
-        return gemma.id === local.id ? [local] : [gemma, local];
-    }
-
-    if (mode === "power") {
-        const muse = {
-            id: museModel,
-            label: "Muse Glimmer 30B",
-            summary: "NVIDIA-hosted multimodal reasoning and coding model",
-            endpoint: "nvidiaMuse",
-        };
-        return muse.id === local.id ? [local] : [muse, local];
-    }
-
-    if (mode === "ultra") {
-        const ultra = {
-            id: ultraModel,
-            label: "Nemotron 3 Ultra",
-            summary: "NVIDIA-hosted agentic reasoning and coding model",
-            endpoint: "nvidiaUltra",
-        };
-        return ultra.id === local.id ? [local] : [ultra, local];
-    }
-
-    if (mode !== "custom") {
+    if (!ultraModel) {
         return [local];
     }
 
-    const remote = {
-        id: customModel,
-        label: customModel,
-        summary: "Custom remote model",
-        endpoint: "custom",
-    };
-
-    // A configured remote model remains optional. If it is unavailable, the
-    // agent can continue privately on the local model instead of stopping.
-    return remote.id === local.id ? [local] : [remote, local];
+    return [
+        {
+            id: ultraModel,
+            label: "Nemotron 3 Ultra",
+            summary: "NVIDIA-hosted coding model with local Qwen fallback",
+            endpoint: "nvidiaUltra",
+        },
+        local,
+    ];
 }
 
 function errorStatus(error) {
@@ -166,43 +63,21 @@ function isUnavailableModelError(error) {
     return [404, 410].includes(status) || /\b(?:404|410)\b/.test(String(error?.message || error));
 }
 
+/**
+ * Always choose the best available route automatically: NVIDIA Nemotron when
+ * it is configured, then the private local Ollama model as a fallback.
+ */
 export default class ModelRouter {
     constructor({
-        mode,
-        customModel = customModelFromEnvironment(),
-        museModel = museModelFromEnvironment(),
         ultraModel = nemotronUltraModelFromEnvironment(),
         localModel = process.env.OLLAMA_MODEL || DEFAULT_LOCAL_MODEL,
-        gemmaModel = process.env.OLLAMA_GEMMA_MODEL || DEFAULT_GEMMA_MODEL,
         createModel = (profile) => new Nemotron({ model: profile.id, endpoint: profile.endpoint }),
         onRoute,
         unavailableProfiles = new Map(),
         now = () => Date.now(),
     } = {}) {
-        const requestedMode = mode || "auto";
-        this.mode = LEGACY_MODEL_MODE_ALIASES[requestedMode] || requestedMode;
-
-        if (!MODEL_MODES.has(this.mode)) {
-            throw new Error(`Unsupported model mode: ${this.mode}.`);
-        }
-
-        if (this.mode === "custom" && !customModel) {
-            throw new Error("AGENT_MODEL is required when the custom model route is selected.");
-        }
-
-        if (this.mode === "power" && !museModel) {
-            throw new Error("NVIDIA_MUSE_MODEL is required when the Power Build route is selected.");
-        }
-
-        if (this.mode === "ultra" && !ultraModel) {
-            throw new Error("NVIDIA_API_KEY is required when the Nemotron 3 Ultra route is selected.");
-        }
-
-        this.customModel = customModel;
-        this.museModel = museModel;
         this.ultraModel = ultraModel;
         this.localModel = localModel;
-        this.gemmaModel = gemmaModel;
         this.createModel = createModel;
         this.onRoute = onRoute;
         this.unavailableProfiles = unavailableProfiles;
@@ -242,7 +117,7 @@ export default class ModelRouter {
         if (this.route) return this.activeProfile;
 
         this.route = this.routeWithAvailableProfiles(
-            routeForMode(this.mode, this.customModel, this.museModel, this.ultraModel, this.localModel, this.gemmaModel)
+            automaticRoute(this.ultraModel, this.localModel)
         );
         this.notifyRoute(false);
         return this.activeProfile;
@@ -251,7 +126,6 @@ export default class ModelRouter {
     notifyRoute(fallback, error = null) {
         this.onRoute?.({
             profile: this.activeProfile,
-            mode: this.mode,
             fallback,
             error: error ? String(error.message || error) : null,
         });

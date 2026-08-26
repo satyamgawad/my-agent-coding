@@ -99,6 +99,15 @@ function createBuildScenario() {
         task: "Create a calculator application named Calculator. Use calculator.js to export an add function, add a calculator.test.js behavior test, and configure npm test and npm run build.",
         responses: [
             toolCall("createProject", { name: "Calculator" }),
+            toolCall("createProjectPlan", {
+                goal: "Deliver a tested calculator application.",
+                milestones: [
+                    { id: "discovery", title: "Confirm calculator requirements" },
+                    { id: "implementation", title: "Build the calculator", dependsOn: ["discovery"] },
+                    { id: "verification", title: "Verify calculator behavior", dependsOn: ["implementation"] },
+                    { id: "delivery", title: "Review the calculator delivery", dependsOn: ["verification"] },
+                ],
+            }),
             toolCall("writeFile", { filePath: "package.json", content: calculatorManifest }),
             toolCall("readFile", { filePath: "package.json" }),
             toolCall("writeFile", { filePath: "calculator.js", content: calculatorSource }),

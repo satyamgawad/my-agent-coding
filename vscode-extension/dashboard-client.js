@@ -158,7 +158,7 @@ async function requestJson(baseUrl, pathname, options = {}) {
     return body;
 }
 
-async function streamTask(baseUrl, { task, mode = "auto", accessPassword, onEvent, onTaskId, signal, fetchImpl } = {}) {
+async function streamTask(baseUrl, { task, accessPassword, onEvent, onTaskId, signal, fetchImpl } = {}) {
     if (typeof task !== "string" || !task.trim()) {
         throw clientError("Describe a task before running it.", "INVALID_TASK");
     }
@@ -168,7 +168,7 @@ async function streamTask(baseUrl, { task, mode = "auto", accessPassword, onEven
         {
             ...requestOptions({
                 method: "POST",
-                body: { task: task.trim(), mode },
+                body: { task: task.trim() },
                 accessPassword,
                 signal,
             }),

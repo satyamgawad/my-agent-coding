@@ -261,10 +261,11 @@ tests with assertions, test/build commands, and optional README notes. This is
 a deterministic engineering checklist—not a claim that the model or app is
 fully correct—so use it alongside the agent's actual build and test results.
 
-For a large, multi-phase, or full-stack new application, the agent now creates
-a private milestone plan before implementation and updates it as milestones are
-verified. Plans live under `projects/.agent-data/`, outside generated source,
-downloads, and publishing. They give later tasks the active project's goal,
+For every new application or website, the agent creates a private scenario plan
+before implementation. Large, multi-phase, or full-stack plans are also
+updated as milestones are verified. Plans live under `projects/.agent-data/`,
+outside generated source, downloads, and publishing. They give later tasks the
+active project's goal,
 dependencies, and delivery progress without relying on one long chat context.
 Milestones are only marked complete after their dependencies and local evidence
 are complete.
@@ -285,11 +286,8 @@ npm run prepare:finetune
 ```
 
 Upload the generated `training/build/agent-tool-calls.ready.jsonl` and a
-separate validation set to NVIDIA NeMo Customizer, deploy the resulting model
-through NVIDIA NIM, then set the private custom endpoint variables documented
-in `.env.example`. Choose **Fine-tuned** in the dashboard for the deployed
-model alone, or **Smart** to use it with the planning/review workflow. Evaluate
-it before changing the normal agent route:
+separate validation set to NVIDIA NeMo Customizer, then evaluate the deployed
+candidate before changing the normal automatic route:
 
 ```bash
 FINETUNE_MODEL=your-workspace/your-finetuned-model npm run evaluate:finetune
@@ -307,8 +305,8 @@ pass rate, steps, duration, and verification summary. This baseline never calls
 the model API or spends model credits; it validates the agent workflow rather
 than measuring a live model's coding ability.
 
-Use **Run live model** only when you want to measure the configured local or
-optional remote model route on the same scenarios. Live runs remain isolated
+Use **Run live model** only when you want to measure the automatic model route
+on the same scenarios. Live runs remain isolated
 from your generated projects, but their results are real model measurements and
 can fail because of local model quality, availability, task complexity, or an
 incomplete implementation.

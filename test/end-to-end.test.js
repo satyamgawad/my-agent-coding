@@ -60,6 +60,15 @@ test("scripted end-to-end session creates, modifies, inspects, and protects a To
     const createAgent = new Agent(
         scriptedModel([
             toolCall("createProject", { name: "Todo App" }),
+            toolCall("createProjectPlan", {
+                goal: "Deliver a tested Todo application.",
+                milestones: [
+                    { id: "discovery", title: "Confirm the Todo scope" },
+                    { id: "implementation", title: "Build the Todo application", dependsOn: ["discovery"] },
+                    { id: "verification", title: "Verify the Todo application", dependsOn: ["implementation"] },
+                    { id: "delivery", title: "Review the Todo delivery", dependsOn: ["verification"] },
+                ],
+            }),
             toolCall("projectTree", { directory: "." }),
             toolCall("writeFile", { filePath: "package.json", content: packageJson }),
             toolCall("readFile", { filePath: "package.json" }),

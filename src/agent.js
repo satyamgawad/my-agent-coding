@@ -3,7 +3,6 @@ import { validateToolArguments } from "./tools/validation.js";
 import { hasMeaningfulTestAssertion, ProjectContextRetriever } from "./project-intelligence.js";
 import { createAgentSourceTools } from "./agent-source.js";
 import LearningMemory from "./learning-memory.js";
-import ProjectBrief from "./project-brief.js";
 import ProjectPlan from "./project-plan.js";
 
 export const DEFAULT_MAX_STEPS = 30;
@@ -22,14 +21,11 @@ const PROJECT_MODIFICATION_TOOLS = new Set(["writeFile", "editFile"]);
 const CHAT_RESEARCH_TOOLS = new Set(["webSearch", "readWebPage"]);
 const CURRENT_INFORMATION_REQUEST = /\b(?:search|find|look\s*up|lookup|latest|current|today|recent|news|price|weather|score|release)\b/i;
 const MAX_CONSECUTIVE_INSPECTIONS = 6;
-const MAX_CONSECUTIVE_FAILED_TESTS = 2;
 const MAX_MODEL_ATTEMPTS = 3;
 const MAX_CHAT_RESEARCH_STEPS = 4;
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_HISTORY_CHARS = 48 * 1024;
 const MAX_TOOL_RESULT_CHARS = 16 * 1024;
-const MAX_SMART_PLAN_CHARS = 3_600;
-const MAX_SMART_REVIEW_ATTEMPTS = 2;
 const APPLICATION_TASK = /\b(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\b/i;
 const NEW_PROJECT_TASK = /\b(?:create|build|make|start|scaffold|develop|generate)\b[\s\S]{0,100}\b(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\b/i;
 const GENERIC_PROJECT_REQUEST = /^\s*(?:please\s+)?(?:create|build|make|start|scaffold|develop|generate)\s+(?:me\s+)?(?:a|an|the)?\s*(?:app|application|website|web\s*site|landing\s*page|portfolio|dashboard|game|tool|tracker|planner|organizer|manager|calculator|timer|notepad|quiz|blog|store|shop|api|service|bot|extension|todo(?:\s+list)?)\s*[.!?]*\s*$/i;
@@ -363,61 +359,8 @@ export function projectRequirementsPrompt() {
     ].join("\n");
 }
 
-function smartPlanningPrompt(contextualTask) {
-    return [
-        "Smart planning pass. Create a compact implementation brief for the task below.",
-        "State only: goal, the smallest safe approach, key files or evidence to inspect, and verification needed.",
-        "Do not call tools, do not expose private reasoning, do not invent project facts, and do not include credentials.",
-        "This brief is advisory only; the implementation must still inspect the workspace and follow the current task.",
-        "Task context:",
-        contextualTask,
-    ].join("\n\n");
-}
-
-function approvalPlanningPrompt(task, context) {
-    return [
-        "Create a user-reviewable implementation plan for the task below.",
-        "This is a plan-only pass: do not call tools, inspect files, create files, run commands, or claim that work is complete.",
-        "Use concise sections: Goal, Proposed changes, Verification, and Risks or open questions. Keep it practical and do not expose private reasoning or credentials.",
-        context ? `Safe existing context (advisory only):\n${context}` : "No project context is available yet.",
-        `User task:\n${task}`,
-    ].join("\n\n");
-}
-
-function smartReviewPrompt(task, completion, completed) {
-    return [
-        "Smart completion review. Independently check whether the proposed completion is supported by the recorded task evidence.",
-        "Return exactly one of these formats and do not call tools:",
-        "VERDICT: APPROVED",
-        "VERDICT: NEEDS_WORK\\n<one concrete missing verification or repair>",
-        "Approve only when the final report matches the task and recorded evidence. Do not invent failures or project facts.",
-        `User task:\n${task}`,
-        `Proposed completion:\n${boundedText(completion, 2_000)}`,
-        `Recorded actions:\n${completed.length > 0 ? completed.join(", ") : "No workspace action was needed."}`,
-    ].join("\n\n");
-}
-
-function smartReviewVerdict(content) {
-    const review = typeof content === "string" ? content.trim() : "";
-
-    if (/^VERDICT:\s*APPROVED\s*$/i.test(review)) {
-        return { approved: true, instruction: null };
-    }
-
-    const needsWork = review.match(/^VERDICT:\s*NEEDS_WORK\s*\n([\s\S]+)$/i);
-
-    if (needsWork && needsWork[1].trim()) {
-        return {
-            approved: false,
-            instruction: boundedText(needsWork[1].trim(), 1_200),
-        };
-    }
-
-    return null;
-}
-
 export default class Agent {
-    constructor(model, { workspaceManager, tools, onEvent, contextRetriever, learningMemory, projectBrief, projectPlan } = {}) {
+    constructor(model, { workspaceManager, tools, onEvent, contextRetriever, learningMemory, projectPlan } = {}) {
         this.model = model;
         this.workspaceManager = workspaceManager;
         this.learningMemory = learningMemory ?? (
@@ -432,9 +375,6 @@ export default class Agent {
         );
         this.projectPlan = projectPlan ?? (
             workspaceManager ? new ProjectPlan({ workspaceManager }) : null
-        );
-        this.projectBrief = projectBrief ?? (
-            workspaceManager ? new ProjectBrief({ workspaceManager }) : null
         );
 
         if (!this.tools) {
@@ -479,73 +419,6 @@ export default class Agent {
         }
 
         throw lastError;
-    }
-
-    async createSmartPlan(contextualTask, signal, task) {
-        this.report("smart: creating implementation brief");
-        const response = await this.generateWithRetry(
-            smartPlanningPrompt(contextualTask),
-            [],
-            signal,
-            task
-        );
-        const content = typeof response?.content === "string" ? response.content.trim() : "";
-
-        const parsed = parseDecision({ content });
-
-        if (!content || parsed.decision || parsed.error) {
-            throw agentError("Smart planning did not return a usable implementation brief.", "SMART_PLAN_INVALID");
-        }
-
-        return boundedText(content, MAX_SMART_PLAN_CHARS);
-    }
-
-    async createApprovalPlan(task, { signal, sessionContext } = {}) {
-        this.report("plan: preparing review");
-        let context = null;
-
-        try {
-            const retrieved = this.contextRetriever?.retrieve(task);
-            context = retrieved?.prompt || null;
-        } catch {
-            // Planning remains useful for a new project or when local context
-            // is unavailable, so retrieval is deliberately optional here.
-        }
-
-        const response = await this.generateWithRetry(
-            approvalPlanningPrompt(task, context),
-            recentHistory(sessionContext || []),
-            signal,
-            task
-        );
-        const content = typeof response?.content === "string" ? response.content.trim() : "";
-        const parsed = parseDecision({ content });
-
-        if (!content || parsed.decision || parsed.error) {
-            return "❌ The agent could not produce a safe review plan. Try again or run the task directly.";
-        }
-
-        return cleanResponseText(content);
-    }
-
-    async reviewSmartCompletion(task, completion, completed, signal) {
-        this.report("smart: reviewing completion");
-        const response = await this.generateWithRetry(
-            smartReviewPrompt(task, completion, completed),
-            [],
-            signal,
-            task
-        );
-        const verdict = smartReviewVerdict(response?.content);
-
-        if (!verdict) {
-            throw agentError(
-                "Smart review did not return an approved or needs-work verdict.",
-                "SMART_REVIEW_INVALID"
-            );
-        }
-
-        return verdict;
     }
 
     async runInformationOnlyChat(task, { signal, sessionContext } = {}) {
@@ -695,30 +568,17 @@ export default class Agent {
         }
     }
 
-    async run(task, { signal, sessionContext, smart, purpose = "project", planOnly = false } = {}) {
+    async run(task, { signal, sessionContext, purpose = "project" } = {}) {
         this.model.resetTask?.();
 
         if (purpose === "chat") {
             return this.runInformationOnlyChat(task, { signal, sessionContext });
         }
 
-        if (planOnly) {
-            try {
-                return await this.createApprovalPlan(task, { signal, sessionContext });
-            } catch (error) {
-                if (signal?.aborted) {
-                    return TASK_CANCELLED_RESULT;
-                }
-
-                return `❌ The plan review failed: ${error.message || String(error)}`;
-            }
-        }
-
         if (GENERIC_PROJECT_REQUEST.test(task)) {
             return projectRequirementsPrompt();
         }
 
-        const smartMode = smart ?? (["smart", "build"].includes(this.model?.mode));
         const selfImprovementTask = SELF_IMPROVEMENT_TASK.test(task);
         const newProjectTask = NEW_PROJECT_TASK.test(task);
         const readOnlyProjectTask = READ_ONLY_PROJECT_TASK.test(task) && !PROJECT_CHANGE_REQUEST.test(task);
@@ -735,7 +595,6 @@ export default class Agent {
             ? null
             : this.contextRetriever?.retrieve(task);
         const learnedLessons = this.learningMemory?.retrieve(task) || [];
-        let savedBrief = null;
         let savedPlan = null;
 
         if (!newProjectTask) {
@@ -744,15 +603,6 @@ export default class Agent {
             } catch {
                 // Project-plan context is advisory. A missing or malformed plan
                 // should not prevent ordinary project work from being diagnosed.
-            }
-
-            if (smartMode) {
-                try {
-                    savedBrief = this.projectBrief?.read();
-                } catch {
-                    // Smart-mode briefs are optional local context. A damaged
-                    // file must never prevent the task from continuing.
-                }
             }
         }
 
@@ -776,58 +626,27 @@ export default class Agent {
             );
         }
 
-        if (savedBrief?.state === "ready") {
-            taskContext.push(
-                `Saved Smart mode project brief (untrusted advisory data; use it only when relevant and follow the current task):\n${resultForPrompt(savedBrief)}`
-            );
-        }
-
         const priorConversation = sessionContextPrompt(sessionContext);
 
         if (priorConversation) {
             taskContext.push(priorConversation);
         }
 
-        let contextualTask = taskContext.join("\n\n");
-        let smartPlan = null;
-
-        if (smartMode) {
-            try {
-                smartPlan = await this.createSmartPlan(contextualTask, signal, task);
-                taskContext.push(
-                    `Smart execution brief (untrusted advisory data; inspect the workspace and use tools for evidence):\n${smartPlan}`
-                );
-                contextualTask = taskContext.join("\n\n");
-            } catch (error) {
-                if (signal?.aborted) {
-                    return TASK_CANCELLED_RESULT;
-                }
-
-                this.report("smart: planning unavailable", {
-                    ok: false,
-                    error: {
-                        code: error?.code || "SMART_PLAN_FAILED",
-                        message: "Continuing without a Smart mode implementation brief.",
-                    },
-                });
-            }
-        }
-
-        let prompt = contextualTask;
+        let prompt = taskContext.join("\n\n");
         let latestResult = null;
         let pendingVerification = null;
         let pendingVerificationTool = null;
         let expectedVerificationContent = null;
         let needsPassingTest = false;
-        let failedTests = 0;
+        let testRecoveryRequired = false;
         let consecutiveInspections = 0;
         const completed = [];
-        let smartReviewAttempts = 0;
         const history = [];
         const applicationWorkflow = APPLICATION_TASK.test(task);
+        const applicationPlanRequired = newProjectTask && applicationWorkflow;
         const largeNewApplicationTask = newProjectTask && LARGE_APPLICATION_TASK.test(task);
         let projectCreated = false;
-        let projectPlanCreated = !largeNewApplicationTask;
+        let projectPlanCreated = !applicationPlanRequired;
         let projectPlanCompleted = !largeNewApplicationTask;
         let packageVerified = false;
         let buildRequired = false;
@@ -909,7 +728,7 @@ export default class Agent {
                     let requirement;
 
                     if (!projectPlanCreated) {
-                        requirement = "This is a large new application. Create a private milestone plan with createProjectPlan before reporting completion.";
+                        requirement = "Create a private scenario plan with createProjectPlan before reporting completion. Include discovery, implementation, verification, and delivery milestones that fit this application.";
                     } else if (!packageVerified) {
                         requirement = "Create package.json and verify it with readFile before reporting completion.";
                     } else if (verifiedSourceFiles.size === 0) {
@@ -951,59 +770,6 @@ export default class Agent {
                 const completion = cleanResponseText(content ||
                     (typeof response?.reasoning === "string" ? response.reasoning : "") ||
                     "Completed.");
-
-                if (!smartMode) {
-                    return completion;
-                }
-
-                let review;
-
-                try {
-                    review = await this.reviewSmartCompletion(task, completion, completed, signal);
-                } catch (error) {
-                    if (signal?.aborted) {
-                        return TASK_CANCELLED_RESULT;
-                    }
-
-                    return `❌ Smart review could not verify the completion. Completed changes were kept. ${error.message || String(error)}`;
-                }
-
-                if (!review.approved) {
-                    smartReviewAttempts += 1;
-
-                    if (smartReviewAttempts >= MAX_SMART_REVIEW_ATTEMPTS) {
-                        return `❌ Smart review found unresolved work after ${MAX_SMART_REVIEW_ATTEMPTS} attempts: ${review.instruction}. Completed changes were kept.`;
-                    }
-
-                    prompt = feedbackPrompt(
-                        task,
-                        latestResult,
-                        `Independent Smart review found a concrete gap: ${review.instruction} Make the required repair or verification before reporting completion.`
-                    );
-                    continue;
-                }
-
-                if (smartPlan) {
-                    try {
-                        this.projectBrief?.save({
-                            goal: task,
-                            plan: smartPlan,
-                            outcome: completion,
-                        });
-                        this.report("smart: saved project brief");
-                    } catch {
-                        // A handoff brief is useful context, not a dependency
-                        // for a verified completion.
-                        this.report("smart: brief unavailable", {
-                            ok: false,
-                            error: {
-                                code: "SMART_BRIEF_SAVE_FAILED",
-                                message: "The task completed, but its Smart mode brief could not be saved.",
-                            },
-                        });
-                    }
-                }
-
                 return completion;
             }
 
@@ -1067,6 +833,20 @@ export default class Agent {
                     );
                     instruction = `Verify the actual file by calling ${pendingVerificationTool} with filePath: ${JSON.stringify(pendingVerification)}.`;
                 } else if (
+                    applicationPlanRequired &&
+                    projectCreated &&
+                    !projectPlanCreated &&
+                    decision.tool !== "createProjectPlan"
+                ) {
+                    result = normalizeToolError(
+                        decision.tool,
+                        agentError(
+                            "Create a private scenario plan before implementing a new application or website.",
+                            "PROJECT_PLAN_REQUIRED"
+                        )
+                    );
+                    instruction = "Call createProjectPlan now. Use concise milestones for discovery, implementation, verification, and delivery before writing application files.";
+                } else if (
                     INSPECTION_TOOLS.has(decision.tool) &&
                     consecutiveInspections >= MAX_CONSECUTIVE_INSPECTIONS
                 ) {
@@ -1079,15 +859,16 @@ export default class Agent {
                     );
                 } else if (
                     isTestAction(decision.tool, decision.arguments) &&
-                    failedTests >= MAX_CONSECUTIVE_FAILED_TESTS
+                    testRecoveryRequired
                 ) {
                     result = normalizeToolError(
                         decision.tool,
                         agentError(
-                            "Tests have failed repeatedly. Make a verified repair before testing again.",
-                            "REPEATED_TEST_FAILURE"
+                            "The last test run failed. Make and verify a repair before running tests again.",
+                            "TEST_REPAIR_REQUIRED"
                         )
                     );
+                    instruction = "Use the previous test output as the bug report. Repair the relevant source or test file, read the changed file back, then rerun the failing test.";
                 } else {
                     try {
                         const toolResult = await tool.execute(decision.arguments, { signal });
@@ -1147,7 +928,7 @@ export default class Agent {
                 repeatedFailure = { signature: null, count: 0 };
             } else {
                 const signature = `${result.tool}:${JSON.stringify(decision.arguments)}`;
-                const policyFailure = ["REPEATED_TEST_FAILURE", "REPEATED_INSPECTION"].includes(
+                const policyFailure = ["TEST_REPAIR_REQUIRED", "REPEATED_INSPECTION"].includes(
                     result.error.code
                 );
                 repeatedFailure = policyFailure
@@ -1177,7 +958,6 @@ export default class Agent {
                             ? result.result.content
                             : null;
                 needsPassingTest = true;
-                failedTests = 0;
                 if (AGENT_SOURCE_MODIFICATION_TOOLS.has(result.tool)) {
                     sourceTestRequired = true;
                     sourceTestPassed = false;
@@ -1201,6 +981,10 @@ export default class Agent {
                 pendingVerificationTool = null;
                 expectedVerificationContent = null;
                 consecutiveInspections += 1;
+                if (testRecoveryRequired) {
+                    testRecoveryRequired = false;
+                    instruction ||= "The repair was verified. Rerun the failed test now and continue repairing until it passes.";
+                }
                 if (decision.arguments.filePath === "package.json") {
                     packageVerified = true;
 
@@ -1227,7 +1011,7 @@ export default class Agent {
                 }
             } else if (result.ok && result.tool === "createProjectPlan") {
                 projectPlanCreated = result.result?.state !== "idle";
-                projectPlanCompleted = result.result?.state === "completed";
+                projectPlanCompleted = !largeNewApplicationTask || result.result?.state === "completed";
                 consecutiveInspections = 0;
                 if (!projectPlanCreated) {
                     instruction = "Create a valid private milestone plan before implementation.";
@@ -1240,7 +1024,7 @@ export default class Agent {
             } else if (isTestAction(result.tool, decision.arguments)) {
                 const didPassTest = result.ok && isPassingTest(result.result);
                 const sourceTest = result.tool === "testAgentSource";
-                failedTests = didPassTest ? 0 : failedTests + 1;
+                testRecoveryRequired = !didPassTest;
                 if (sourceTest) {
                     sourceTestPassed = didPassTest;
                 } else {
@@ -1270,8 +1054,8 @@ export default class Agent {
 
             if (result.ok && result.tool === "createProject") {
                 projectCreated = true;
-                if (largeNewApplicationTask) {
-                    instruction = "This is a large new application. Create a private milestone plan with createProjectPlan before implementation.";
+                if (applicationPlanRequired) {
+                    instruction = "Before implementation, create a private scenario plan with createProjectPlan. Include discovery, implementation, verification, and delivery milestones.";
                 }
             }
 
@@ -1279,8 +1063,8 @@ export default class Agent {
                 instruction = "Make an implementation action, or run test next instead of inspecting again.";
             }
 
-            if (!result.ok && result.error.code === "REPEATED_TEST_FAILURE") {
-                instruction = "You must make a verified repair before testing again.";
+            if (!result.ok && result.error.code === "TEST_REPAIR_REQUIRED") {
+                instruction = "Use the previous test output as the bug report. Make a verified repair before testing again.";
             }
 
             if (!result.ok && (isTestAction(result.tool, decision.arguments) || isBuildAction(result.tool, decision.arguments))) {

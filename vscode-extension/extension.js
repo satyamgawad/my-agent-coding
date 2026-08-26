@@ -12,19 +12,6 @@ const {
 } = require("./dashboard-client.js");
 
 const SECRET_KEY = "satyamsAgent.dashboardAccessPassword";
-const MODEL_MODES = [
-    ["auto", "Auto"],
-    ["smart", "Smart"],
-    ["nano", "Nano"],
-    ["oss", "GPT-OSS 20B"],
-    ["llama", "Llama 3.3 70B"],
-    ["kimi", "Kimi K2.6"],
-    ["oss120", "GPT-OSS 120B"],
-    ["ultra", "Nemotron Ultra"],
-    ["glm", "GLM-5.2"],
-    ["custom", "Fine-tuned"],
-];
-
 let panel;
 let currentTask = null;
 
@@ -155,8 +142,6 @@ async function runTask(extensionContext, request) {
     }
 
     const task = typeof request?.task === "string" ? request.task.trim() : "";
-    const mode = MODEL_MODES.some(([value]) => value === request?.mode) ? request.mode : "auto";
-
     if (!task) {
         sendToPanel({ type: "taskError", message: "Describe a task before running it." });
         return;
@@ -170,7 +155,6 @@ async function runTask(extensionContext, request) {
         const { baseUrl, accessPassword } = await connectionDetails(extensionContext);
         await streamTask(baseUrl, {
             task,
-            mode,
             accessPassword,
             signal: controller.signal,
             onTaskId(taskId) {
@@ -288,9 +272,6 @@ function openPanel(extensionContext) {
 
 function webviewHtml(webview) {
     const nonce = crypto.randomBytes(16).toString("base64");
-    const modeOptions = MODEL_MODES.map(([value, label]) =>
-        `<option value="${value}">${label}</option>`
-    ).join("");
 
     return `<!doctype html>
 <html lang="en">
@@ -307,11 +288,11 @@ function webviewHtml(webview) {
     h1, h2, p { margin: 0; } h1 { font-size: 1.25rem; } h2 { font-size: .95rem; }
     .muted { color: var(--vscode-descriptionForeground); font-size: .88rem; line-height: 1.45; }
     .heading, .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
-    textarea, select { box-sizing: border-box; width: 100%; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 6px; padding: 10px; font: inherit; }
+    textarea { box-sizing: border-box; width: 100%; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 6px; padding: 10px; font: inherit; }
     textarea { min-height: 125px; resize: vertical; line-height: 1.45; }
     button { color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 5px; padding: 8px 12px; font: inherit; cursor: pointer; }
     button:hover { background: var(--vscode-button-hoverBackground); } button.secondary { color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); }
-    button:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+    button:focus-visible, textarea:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
     button:disabled { cursor: not-allowed; opacity: .6; } .hidden { display: none; }
     #status { color: var(--vscode-descriptionForeground); min-height: 1.2em; }
     #events { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; max-height: 290px; overflow: auto; }
@@ -323,7 +304,7 @@ function webviewHtml(webview) {
   <main>
     <section class="card">
       <div class="heading"><h1>Satyam's Agent</h1><button id="open-dashboard" class="secondary" type="button">Open dashboard</button></div>
-      <p class="muted" style="margin-top:8px">Your local coding agent, connected to the same dashboard project and saved conversation.</p>
+      <p class="muted" style="margin-top:8px">Automatic model routing, connected to the same dashboard project and saved conversation.</p>
     </section>
     <section class="card">
       <div class="heading"><h2>Workspace</h2><button id="select-project" class="secondary" type="button">Select project</button></div>
@@ -333,7 +314,6 @@ function webviewHtml(webview) {
       <form id="task-form">
         <label for="task"><h2>Give the agent a task</h2></label>
         <textarea id="task" maxlength="12000" placeholder="Example: Inspect the selected app and improve its empty state UI."></textarea>
-        <div class="row" style="margin-top:10px"><label class="muted" for="mode">Model mode</label><select id="mode">${modeOptions}</select></div>
         <div class="row" style="margin-top:12px"><span id="status" aria-live="polite">Ready.</span><span><button id="cancel" class="secondary hidden" type="button">Cancel task</button> <button id="run" type="submit">Run task</button></span></div>
       </form>
       <div id="result" class="hidden" aria-live="polite"></div>
@@ -343,7 +323,6 @@ function webviewHtml(webview) {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const task = document.querySelector("#task");
-    const mode = document.querySelector("#mode");
     const form = document.querySelector("#task-form");
     const run = document.querySelector("#run");
     const cancel = document.querySelector("#cancel");
@@ -351,12 +330,10 @@ function webviewHtml(webview) {
     const project = document.querySelector("#project");
     const events = document.querySelector("#events");
     const result = document.querySelector("#result");
-    const saved = vscode.getState() || {};
-    if (typeof saved.mode === "string") mode.value = saved.mode;
-    function setState(working) { run.disabled = working; task.disabled = working; mode.disabled = working; cancel.classList.toggle("hidden", !working); }
+    function setState(working) { run.disabled = working; task.disabled = working; cancel.classList.toggle("hidden", !working); }
     function addEvent(message) { const item = document.createElement("li"); item.textContent = message; events.prepend(item); while (events.children.length > 40) events.lastElementChild.remove(); }
     function setProject(context) { const active = context && context.project; const total = Array.isArray(context && context.projects) ? context.projects.length : 0; project.textContent = active ? 'Active project: ' + active + ' (' + total + ' available)' : 'No project selected (' + total + ' available).'; }
-    form.addEventListener("submit", (event) => { event.preventDefault(); result.classList.add("hidden"); result.textContent = ""; events.replaceChildren(); vscode.setState({ mode: mode.value }); vscode.postMessage({ type: "runTask", task: task.value, mode: mode.value }); });
+    form.addEventListener("submit", (event) => { event.preventDefault(); result.classList.add("hidden"); result.textContent = ""; events.replaceChildren(); vscode.postMessage({ type: "runTask", task: task.value }); });
     cancel.addEventListener("click", () => vscode.postMessage({ type: "cancelTask" }));
     document.querySelector("#select-project").addEventListener("click", () => vscode.postMessage({ type: "selectProject" }));
     document.querySelector("#open-dashboard").addEventListener("click", () => vscode.postMessage({ type: "openDashboard" }));

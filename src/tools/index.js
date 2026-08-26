@@ -62,7 +62,7 @@ export const TOOL_DEFINITIONS = {
         arguments: {},
     },
     createProjectPlan: {
-        description: "Save a private milestone plan for a large active project. Milestones need lowercase-hyphen ids, titles, optional descriptions, and optional dependencies on earlier milestone ids.",
+        description: "Save a private scenario and milestone plan for a new active application or website. Milestones need lowercase-hyphen ids, titles, optional descriptions, and optional dependencies on earlier milestone ids.",
         arguments: { goal: "string", milestones: "array of milestone objects" },
     },
     readProjectPlan: {

@@ -71,10 +71,8 @@ function nativeToolContent(toolCalls) {
     }
 }
 
-export function modelEndpointConfig(environment = process.env, { endpoint = "auto" } = {}) {
-    const selectedEndpoint = endpoint === "auto"
-        ? (environment.AGENT_MODEL_BASE_URL ? "custom" : "ollama")
-        : endpoint;
+export function modelEndpointConfig(environment = process.env, { endpoint = "ollama" } = {}) {
+    const selectedEndpoint = endpoint === "auto" ? "ollama" : endpoint;
     const ollamaBaseURL = environment.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL;
     const isLocalOllama = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\/v1\/?$/i.test(ollamaBaseURL);
     const configByEndpoint = {
@@ -82,16 +80,6 @@ export function modelEndpointConfig(environment = process.env, { endpoint = "aut
             baseURL: ollamaBaseURL,
             apiKey: environment.OLLAMA_API_KEY || (isLocalOllama ? "ollama" : null),
             missingKeyMessage: "OLLAMA_API_KEY is required for a custom local Ollama endpoint.",
-        },
-        custom: {
-            baseURL: environment.AGENT_MODEL_BASE_URL,
-            apiKey: environment.AGENT_MODEL_API_KEY,
-            missingKeyMessage: "AGENT_MODEL_API_KEY is required for a custom remote model endpoint.",
-        },
-        nvidiaMuse: {
-            baseURL: environment.NVIDIA_MUSE_BASE_URL || environment.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL,
-            apiKey: environment.NVIDIA_MUSE_API_KEY || environment.NVIDIA_API_KEY,
-            missingKeyMessage: "NVIDIA_API_KEY is required for the Muse Glimmer Power Build route.",
         },
         nvidiaUltra: {
             baseURL: environment.NVIDIA_NEMOTRON_ULTRA_BASE_URL || environment.NVIDIA_ULTRA_BASE_URL || environment.NVIDIA_BASE_URL || DEFAULT_NVIDIA_BASE_URL,
@@ -112,13 +100,13 @@ export function modelEndpointConfig(environment = process.env, { endpoint = "aut
     }
 
     if (typeof baseURL !== "string" || !/^https?:\/\/[^\s]+$/i.test(baseURL)) {
-        throw new Error("AGENT_MODEL_BASE_URL must be a valid HTTP(S) API base URL.");
+        throw new Error("The model API base URL must be a valid HTTP(S) URL.");
     }
 
     return { apiKey, baseURL };
 }
 
-function createClient(environment = process.env, endpoint = "auto") {
+function createClient(environment = process.env, endpoint = "ollama") {
     const { apiKey, baseURL } = modelEndpointConfig(environment, { endpoint });
 
     return new OpenAI({
@@ -133,7 +121,7 @@ function createClient(environment = process.env, endpoint = "auto") {
  * Keeping this separate from generation lets the dashboard report route health
  * without sending a prompt or exposing any provider error details to the UI.
  */
-export async function listProviderModels({ client, endpoint = "auto" } = {}) {
+export async function listProviderModels({ client, endpoint = "ollama" } = {}) {
     const resolvedClient = client ?? createClient(process.env, endpoint);
     const page = await resolvedClient.models.list();
 
@@ -168,19 +156,19 @@ Tool-call format:
 
 When a tool is needed, return exactly one JSON object and nothing else. Otherwise return a short user-facing answer. Never expose private reasoning.
 
-Simple workflow:
+Application and website workflow:
 1. For an existing project, use projectTree or listFiles with directory "." and read a relevant file before changing it. The selected project is already the workspace; do not add its name to a path.
-2. For a new app, call createProject first. Create the smallest complete solution, including a behavior test.
-3. Use writeFile for new or replacement content and editFile only for an exact replacement. Immediately read back every changed file.
+2. For every new app or website, call createProject first, then createProjectPlan before writing application files. The plan must be a concise scenario with discovery, implementation, verification, and delivery milestones.
+3. Create the smallest complete solution, including a behavior test. Use writeFile for new or replacement content and editFile only for an exact replacement. Immediately read back every changed file.
 4. Run npm run build when it exists, then test. For a new app, run projectReadiness after passing tests.
-5. If a tool fails, read its error and choose a different corrective action. Do not repeat the same failing call.
+5. If a test or build fails, treat its output as a bug report: diagnose it, make a focused repair, read the changed file back, and rerun the failed check. Do not report that work is complete while a recoverable test failure remains. Never rerun a failed test without first making and verifying a repair.
 
 Keep changes focused, validate user input, and never put secrets in source. Use agent-source tools only for an explicit request to improve this agent. Terminal accepts only the listed project-safe commands. Report what changed and what you verified.
 `;
 }
 
 class Nemotron {
-    constructor({ client, debug = false, model, endpoint = "auto" } = {}) {
+    constructor({ client, debug = false, model, endpoint = "ollama" } = {}) {
         this.client = client;
         this.debug = debug;
         this.model = model;

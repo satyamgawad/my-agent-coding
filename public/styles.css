@@ -717,6 +717,8 @@ body {
 .safety-toggle input:focus-visible + .safety-toggle-track { outline: 2px solid #cde2ff; outline-offset: 3px; }
 .safety-toggle input:disabled + .safety-toggle-track { opacity: .5; }
 .status-dot { background: #c5d7ff; box-shadow: 0 0 0 3px rgba(197, 215, 255, .1); }
+.model-route.is-fallback { border-color: rgba(255, 156, 122, .42); color: #ffd1c2; }
+.model-route.is-fallback .status-dot { background: var(--coral); box-shadow: 0 0 0 3px rgba(255, 156, 122, .12); }
 .intro { padding-top: 86px; }
 h1 em { color: #e2e6ec; }
 .eyebrow, .muted-label { color: #c1cee4; }

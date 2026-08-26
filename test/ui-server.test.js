@@ -31,10 +31,22 @@ test("task timeout settings stay within a safe, predictable range", () => {
 
 test("a hosted dashboard explains why a local Ollama route cannot connect", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
+    const savedNvidiaApiKey = process.env.NVIDIA_API_KEY;
+    const savedUltraApiKey = process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+    const savedLegacyUltraApiKey = process.env.NVIDIA_ULTRA_API_KEY;
+    delete process.env.NVIDIA_API_KEY;
+    delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+    delete process.env.NVIDIA_ULTRA_API_KEY;
     const server = createUiServer({ agentRoot: root, allowProjectPreviews: false });
     const baseUrl = await startServer(server);
 
     t.after(async () => {
+        if (savedNvidiaApiKey === undefined) delete process.env.NVIDIA_API_KEY;
+        else process.env.NVIDIA_API_KEY = savedNvidiaApiKey;
+        if (savedUltraApiKey === undefined) delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
+        else process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY = savedUltraApiKey;
+        if (savedLegacyUltraApiKey === undefined) delete process.env.NVIDIA_ULTRA_API_KEY;
+        else process.env.NVIDIA_ULTRA_API_KEY = savedLegacyUltraApiKey;
         await new Promise((resolve) => server.close(resolve));
         fs.rmSync(root, { recursive: true, force: true });
     });
@@ -42,7 +54,7 @@ test("a hosted dashboard explains why a local Ollama route cannot connect", asyn
     const task = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ task: "Hello", purpose: "chat", mode: "auto" }),
+        body: JSON.stringify({ task: "Hello", purpose: "chat" }),
     });
 
     assert.equal(task.status, 400);
@@ -51,7 +63,7 @@ test("a hosted dashboard explains why a local Ollama route cannot connect", asyn
     const evaluation = await fetch(`${baseUrl}/api/evaluations/run`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "live", modelMode: "auto" }),
+        body: JSON.stringify({ mode: "live" }),
     });
     assert.equal(evaluation.status, 400);
     assert.match((await evaluation.json()).error, /cannot reach Ollama running on your Mac/);
@@ -321,57 +333,6 @@ test("the optional NVIDIA Safety Guard checks requests and answers without block
     assert.equal(checks[1].response, "A safe answer.");
 });
 
-test("the dashboard runs Smart mode and exposes its saved project handoff", async (t) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
-    const server = createUiServer({
-        agentRoot: root,
-        createModel: () => ({
-            async generate(prompt) {
-                if (prompt.includes("Smart planning pass")) {
-                    return { content: "Goal: improve the notes project. Approach: inspect and update the selected project. Verify: run its tests." };
-                }
-
-                if (prompt.includes("Smart completion review")) {
-                    return { content: "VERDICT: APPROVED" };
-                }
-
-                return { content: "Improved the selected project." };
-            },
-        }),
-    });
-    const baseUrl = await startServer(server);
-
-    t.after(async () => {
-        await new Promise((resolve) => server.close(resolve));
-        fs.rmSync(root, { recursive: true, force: true });
-    });
-
-    fs.mkdirSync(path.join(root, "projects", "notes-app"), { recursive: true });
-    await fetch(`${baseUrl}/api/projects/select`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "notes-app" }),
-    });
-
-    const task = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ task: "Improve the selected project.", mode: "smart" }),
-    });
-    assert.equal(task.status, 200);
-    const stream = await task.text();
-    assert.match(stream, /smart: creating implementation brief/);
-    assert.match(stream, /smart: reviewing completion/);
-    assert.match(stream, /Improved the selected project/);
-
-    const brief = await fetch(`${baseUrl}/api/projects/brief`);
-    const briefBody = await brief.json();
-    assert.equal(briefBody.state, "ready");
-    assert.match(briefBody.goal, /Improve the selected project/);
-    assert.match(briefBody.plan, /inspect and update/i);
-    assert.match(briefBody.outcome, /Improved the selected project/);
-});
-
 test("the dashboard exposes configured GitHub publishing only after repository confirmation", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     const calls = [];
@@ -422,36 +383,6 @@ test("the dashboard exposes configured GitHub publishing only after repository c
     });
     assert.equal(published.status, 200);
     assert.deepEqual(await published.json(), { state: "complete", total: 2, created: 2, updated: 0, repository: "owner/generated-apps" });
-});
-
-test("the dashboard reports cached model route availability without exposing provider failures", async (t) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
-    const modelHealth = {
-        async check() {
-            return {
-                status: "degraded",
-                checkedAt: "2026-08-09T12:00:00.000Z",
-                cached: true,
-                models: [
-                    { mode: "flash", id: "flash", label: "Flash", summary: "Fast lane", available: false },
-                    { mode: "ultra", id: "ultra", label: "Ultra", summary: "Balanced lane", available: true },
-                ],
-            };
-        },
-    };
-    const server = createUiServer({ agentRoot: root, modelHealth });
-    const baseUrl = await startServer(server);
-
-    t.after(async () => {
-        await new Promise((resolve) => server.close(resolve));
-        fs.rmSync(root, { recursive: true, force: true });
-    });
-
-    const response = await fetch(`${baseUrl}/api/models/health`);
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.deepEqual(await response.json(), await modelHealth.check());
 });
 
 test("the dashboard reports deterministic engineering readiness for the active project", async (t) => {
@@ -857,70 +788,6 @@ test("the local UI rejects blank tasks without invoking the agent", async (t) =>
     });
 });
 
-test("the dashboard explains how to configure the Muse Power Build route", async (t) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
-    const savedNvidiaApiKey = process.env.NVIDIA_API_KEY;
-    const savedNvidiaMuseApiKey = process.env.NVIDIA_MUSE_API_KEY;
-    delete process.env.NVIDIA_API_KEY;
-    delete process.env.NVIDIA_MUSE_API_KEY;
-    const server = createUiServer({ agentRoot: root });
-    const baseUrl = await startServer(server);
-
-    t.after(async () => {
-        if (savedNvidiaApiKey === undefined) delete process.env.NVIDIA_API_KEY;
-        else process.env.NVIDIA_API_KEY = savedNvidiaApiKey;
-        if (savedNvidiaMuseApiKey === undefined) delete process.env.NVIDIA_MUSE_API_KEY;
-        else process.env.NVIDIA_MUSE_API_KEY = savedNvidiaMuseApiKey;
-        await new Promise((resolve) => server.close(resolve));
-        fs.rmSync(root, { recursive: true, force: true });
-    });
-
-    const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ task: "Build a dashboard.", mode: "power" }),
-    });
-
-    assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), {
-        error: "Muse Power Build needs NVIDIA_MUSE_MODEL in .env. Add the exact model ID from your NVIDIA API Catalog page, then restart the dashboard.",
-    });
-});
-
-test("the dashboard explains how to configure the Nemotron 3 Ultra route", async (t) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
-    const savedNvidiaApiKey = process.env.NVIDIA_API_KEY;
-    const savedUltraApiKey = process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
-    const savedUltraModel = process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
-    delete process.env.NVIDIA_API_KEY;
-    delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
-    delete process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
-    const server = createUiServer({ agentRoot: root });
-    const baseUrl = await startServer(server);
-
-    t.after(async () => {
-        if (savedNvidiaApiKey === undefined) delete process.env.NVIDIA_API_KEY;
-        else process.env.NVIDIA_API_KEY = savedNvidiaApiKey;
-        if (savedUltraApiKey === undefined) delete process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY;
-        else process.env.NVIDIA_NEMOTRON_ULTRA_API_KEY = savedUltraApiKey;
-        if (savedUltraModel === undefined) delete process.env.NVIDIA_NEMOTRON_ULTRA_MODEL;
-        else process.env.NVIDIA_NEMOTRON_ULTRA_MODEL = savedUltraModel;
-        await new Promise((resolve) => server.close(resolve));
-        fs.rmSync(root, { recursive: true, force: true });
-    });
-
-    const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ task: "Explain a system design.", mode: "ultra", purpose: "chat" }),
-    });
-
-    assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), {
-        error: "Nemotron 3 Ultra needs NVIDIA_API_KEY in .env. Add your NVIDIA API Catalog key, then restart the dashboard.",
-    });
-});
-
 test("a missing project file is returned as a normal task result instead of dropping the stream", async (t) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "my-agent-ui-test-"));
     fs.mkdirSync(path.join(root, "projects", "notepad-app"), { recursive: true });
@@ -993,11 +860,13 @@ test("the dashboard uses one automatic model route", () => {
     const script = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
 
     assert.match(page, /Automatic route: NVIDIA Nemotron 3 Ultra when configured/);
+    assert.match(page, /id="model-route"/);
     assert.doesNotMatch(page, /id="model-mode"/);
     assert.doesNotMatch(page, /id="chat-model-mode"/);
     assert.doesNotMatch(page, /id="plan-review"/);
     assert.doesNotMatch(page, /data-build-prompt/);
-    assert.match(script, /mode: "auto"/);
+    assert.match(script, /function setModelRoute/);
+    assert.match(script, /Local fallback/);
     assert.doesNotMatch(script, /modelNotes/);
     assert.doesNotMatch(script, /CHAT_MODEL_MODE_STORAGE_KEY/);
 });

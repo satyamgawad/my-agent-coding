@@ -16,6 +16,18 @@ function createAgent(testContext, responses, prompts = []) {
     };
 }
 
+function applicationPlan(goal) {
+    return toolCall("createProjectPlan", {
+        goal,
+        milestones: [
+            { id: "discovery", title: "Confirm the application scope" },
+            { id: "implementation", title: "Build the application", dependsOn: ["discovery"] },
+            { id: "verification", title: "Test the application", dependsOn: ["implementation"] },
+            { id: "delivery", title: "Review the completed delivery", dependsOn: ["verification"] },
+        ],
+    });
+}
+
 test("tool results and errors always have a structured normalized shape", () => {
     assert.deepEqual(normalizeToolResult("readFile", "contents"), {
         ok: true,
@@ -55,24 +67,6 @@ test("a generic project request gathers requirements before the agent creates fi
     assert.match(result, /Purpose and target users/);
     assert.match(result, /UI\/UX style/);
     assert.match(result, /Once you reply, I will create the project/);
-});
-
-test("plan review returns an implementation outline without changing a project", async (t) => {
-    const { agent, prompts, tools } = createAgent(t, [{
-        content: [
-            "Goal: add project sharing.",
-            "Proposed changes: inspect the current data flow, add the smallest share action, and preserve existing behavior.",
-            "Verification: add a behavior test and run the project checks.",
-            "Risks or open questions: confirm the intended sharing audience.",
-        ].join("\n"),
-    }]);
-
-    const result = await agent.run("Add sharing to the active project.", { planOnly: true });
-
-    assert.match(result, /Goal: add project sharing/);
-    assert.match(prompts[0], /plan-only pass/);
-    assert.match(prompts[0], /do not call tools, inspect files, create files, run commands/);
-    assert.deepEqual(tools.listProjects.execute({}), []);
 });
 
 test("general Chat can research public web sources without accessing a project", async (t) => {
@@ -200,50 +194,6 @@ test("agent recovers from invalid structured output and accepts a fenced tool ca
     assert.equal(await agent.run("Show available projects."), "No projects exist yet.");
     assert.match(prompts[1], /INVALID_STRUCTURED_MODEL_RESPONSE/);
     assert.match(prompts[1], /not a valid tool call/);
-});
-
-test("Smart mode plans first, reviews the completion, and saves a project handoff", async (t) => {
-    const prompts = [];
-    const { workspaceManager, tools } = createTestWorkspace(t);
-    workspaceManager.createProject("Notes");
-    const agent = new Agent(
-        scriptedModel([
-            { content: "Goal: explain the selected project. Approach: inspect the project and report only verified facts. Verify: no workspace change is needed." },
-            { content: "The selected project is ready for inspection." },
-            { content: "VERDICT: APPROVED" },
-        ], prompts),
-        { workspaceManager, tools }
-    );
-
-    assert.equal(
-        await agent.run("Explain the selected project.", { smart: true }),
-        "The selected project is ready for inspection."
-    );
-    assert.match(prompts[0], /Smart planning pass/);
-    assert.match(prompts[1], /Smart execution brief/);
-    assert.match(prompts[2], /Smart completion review/);
-    assert.match(agent.projectBrief.read().plan, /inspect the project/i);
-});
-
-test("Smart mode continues after an independent review identifies missing work", async (t) => {
-    const prompts = [];
-    const { agent } = createAgent(
-        t,
-        [
-            { content: "Goal: answer concisely. Approach: verify the response. Verify: review the result." },
-            { content: "The task is complete." },
-            { content: "VERDICT: NEEDS_WORK\nState the requested outcome clearly." },
-            { content: "The requested outcome is complete." },
-            { content: "VERDICT: APPROVED" },
-        ],
-        prompts
-    );
-
-    assert.equal(
-        await agent.run("Explain the task outcome.", { smart: true }),
-        "The requested outcome is complete."
-    );
-    assert.match(prompts[3], /Independent Smart review found a concrete gap/);
 });
 
 test("an explicit self-improvement task can verify and test an allowed agent-source edit", async (t) => {
@@ -465,7 +415,7 @@ test("agent edits the newly selected project without a redundant inspection gate
     );
 });
 
-test("agent blocks repeated failed tests until the model changes and verifies the project", async (t) => {
+test("agent requires a verified repair before retrying a failed test", async (t) => {
     const prompts = [];
     const { agent } = createAgent(
         t,
@@ -494,8 +444,8 @@ test("agent blocks repeated failed tests until the model changes and verifies th
         await agent.run("Run tests and fix errors."),
         "Repaired the test setup and verified it passes."
     );
-    assert.match(prompts[6], /REPEATED_TEST_FAILURE/);
-    assert.match(prompts[6], /make a verified repair/);
+    assert.match(prompts[6], /TEST_REPAIR_REQUIRED/);
+    assert.match(prompts[6], /Make a verified repair/);
 });
 
 test("agent requires an immediate file read and a later passing test after a write", async (t) => {
@@ -864,6 +814,7 @@ test("agent does not retrieve an old project when the task creates a new applica
         scriptedModel([
             { content: "I can create the new application." },
             toolCall("createProject", { name: "New Portfolio" }),
+            applicationPlan("Deliver a tested portfolio application."),
             toolCall("writeFile", { filePath: "package.json", content: packageJson }),
             toolCall("readFile", { filePath: "package.json" }),
             toolCall("writeFile", { filePath: "app.js", content: "export const name = 'Portfolio';\n" }),
@@ -885,6 +836,39 @@ test("agent does not retrieve an old project when the task creates a new applica
     assert.match(prompts[1], /Call createProject/);
 });
 
+test("new applications save a scenario plan before implementation", async (t) => {
+    const prompts = [];
+    const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
+    const { agent } = createAgent(
+        t,
+        [
+            toolCall("createProject", { name: "Planned Notes" }),
+            toolCall("writeFile", { filePath: "package.json", content: packageJson }),
+            applicationPlan("Deliver a tested notes application."),
+            toolCall("writeFile", { filePath: "package.json", content: packageJson }),
+            toolCall("readFile", { filePath: "package.json" }),
+            toolCall("writeFile", { filePath: "app.js", content: "export const title = 'Notes';\n" }),
+            toolCall("readFile", { filePath: "app.js" }),
+            toolCall("writeFile", {
+                filePath: "app.test.js",
+                content: 'import assert from "node:assert/strict"; import test from "node:test"; test("has a title", () => assert.equal("Notes", "Notes"));\n',
+            }),
+            toolCall("readFile", { filePath: "app.test.js" }),
+            toolCall("test"),
+            toolCall("projectReadiness"),
+            { content: "Created the planned notes application." },
+        ],
+        prompts
+    );
+
+    assert.equal(
+        await agent.run("Create a notes application."),
+        "Created the planned notes application."
+    );
+    assert.match(prompts[2], /PROJECT_PLAN_REQUIRED/);
+    assert.match(prompts[2], /createProjectPlan/);
+});
+
 test("application tasks cannot finish before verified source, tests, and a passing test run", async (t) => {
     const prompts = [];
     const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
@@ -892,6 +876,7 @@ test("application tasks cannot finish before verified source, tests, and a passi
         t,
         [
             toolCall("createProject", { name: "Checklist" }),
+            applicationPlan("Deliver a tested checklist application."),
             toolCall("writeFile", { filePath: "package.json", content: packageJson }),
             toolCall("readFile", { filePath: "package.json" }),
             toolCall("writeFile", { filePath: "app.js", content: "export const title = 'Checklist';\n" }),
@@ -914,17 +899,16 @@ test("application tasks cannot finish before verified source, tests, and a passi
         await agent.run("Create a small checklist application."),
         "The application is complete, tested, and ready."
     );
-    assert.match(prompts[8], /Run npm test successfully/);
-    assert.match(prompts[10], /Run projectReadiness/);
+    assert.ok(prompts.some((prompt) => /Run npm test successfully/.test(prompt)));
+    assert.ok(prompts.some((prompt) => /Run projectReadiness/.test(prompt)));
 });
 
-test("Build mode recognizes product requests beyond app keywords and plans a verified delivery", async (t) => {
-    const prompts = [];
+test("automatic routing recognizes product requests beyond app keywords and requires verified delivery", async (t) => {
     const packageJson = JSON.stringify({ scripts: { test: "node --test" } });
     const { workspaceManager, tools } = createTestWorkspace(t);
     const model = scriptedModel([
-        { content: "Goal: build a usable habit tracker. Approach: create a small browser-ready project with persistent task state. Verify: behavior tests and readiness checks." },
         toolCall("createProject", { name: "Habit Tracker" }),
+        applicationPlan("Deliver a tested habit tracker."),
         toolCall("writeFile", { filePath: "package.json", content: packageJson }),
         toolCall("readFile", { filePath: "package.json" }),
         toolCall("writeFile", { filePath: "habit.js", content: "export const addHabit = (habits, name) => [...habits, { name, done: false }];\n" }),
@@ -937,18 +921,13 @@ test("Build mode recognizes product requests beyond app keywords and plans a ver
         toolCall("test"),
         toolCall("projectReadiness"),
         { content: "Built and verified the habit tracker." },
-        { content: "VERDICT: APPROVED" },
-    ], prompts);
-    model.mode = "build";
+    ]);
     const agent = new Agent(model, { workspaceManager, tools });
 
     assert.equal(
         await agent.run("Build a habit tracker."),
         "Built and verified the habit tracker."
     );
-    assert.match(prompts[0], /Smart planning pass/);
-    assert.match(prompts[1], /Smart execution brief/);
-    assert.match(prompts.at(-1), /Smart completion review/);
 });
 
 test("application tasks require tests with a meaningful assertion", async (t) => {
@@ -958,6 +937,7 @@ test("application tasks require tests with a meaningful assertion", async (t) =>
         t,
         [
             toolCall("createProject", { name: "Test Quality" }),
+            applicationPlan("Deliver a tested calculator application."),
             toolCall("writeFile", { filePath: "package.json", content: packageJson }),
             toolCall("readFile", { filePath: "package.json" }),
             toolCall("writeFile", { filePath: "app.js", content: "export const add = (left, right) => left + right;\n" }),
@@ -983,7 +963,7 @@ test("application tasks require tests with a meaningful assertion", async (t) =>
         await agent.run("Create a calculator application."),
         "Created and verified an application with behavior tests."
     );
-    assert.match(prompts[7], /no meaningful assertion/);
+    assert.ok(prompts.some((prompt) => /no meaningful assertion/.test(prompt)));
 });
 
 test("large new applications require a completed private milestone plan before delivery", async (t) => {
